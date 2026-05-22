@@ -1,0 +1,18 @@
+import { Schema, model, Types } from 'mongoose';
+import { UserRole, UserStatus } from '../../../../shared/constants/roles';
+
+const UserSchema = new Schema({
+  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
+  password: { type: String, required: true },
+  fullName: { type: String, trim: true, default: null },
+  role: {
+    type: String,
+    enum: [...Object.values(UserRole), null],
+    default: null,
+    required: false,
+  },
+  status: { type: String, enum: Object.values(UserStatus), default: UserStatus.PENDING },
+  teamId: { type: Types.ObjectId, ref: 'Team', default: null },
+}, { timestamps: true });
+
+export const UserModel = model('User', UserSchema);
