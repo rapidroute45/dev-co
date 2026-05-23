@@ -3,6 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import path from 'path';
 import mongoose from 'mongoose';
+import multer from 'multer';
 import { authRoutes } from './modules/auth';
 import { teamRoutes } from './modules/teams';
 import { userRoutes } from './modules/users';
@@ -41,6 +42,15 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/driver-documents', driverDocumentRoutes);
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
+  if (err instanceof multer.MulterError) {
+    const message =
+      err.code === 'LIMIT_FILE_SIZE'
+        ? 'File too large (max 10MB).'
+        : err.message || 'Upload failed.';
+    res.status(400).json({ success: false, error: message });
+    return;
+  }
+
   if (err instanceof AppError) {
     res.status(err.statusCode).json({ success: false, error: err.message });
     return;

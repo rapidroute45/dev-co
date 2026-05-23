@@ -7,6 +7,8 @@ export enum RouteStatus {
   ACTIVE = 'active',
   IN_PROGRESS = 'in_progress',
   COMPLETED = 'completed',
+  /** Manager rejected delivery proof after driver completed the route */
+  NOT_VERIFIED = 'not_verified',
   CANCELLED = 'cancelled',
 }
 

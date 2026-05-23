@@ -104,6 +104,14 @@ export class UpdateRouteUseCase {
           400
         );
       }
+      if (status === RouteStatus.NOT_VERIFIED) {
+        if (existing.status !== RouteStatus.COMPLETED) {
+          throw new AppError(
+            'Only completed routes can be marked as not verified.',
+            400
+          );
+        }
+      }
       patch.status = status;
     } else if (driverChanged) {
       patch.status = RouteStatus.PENDING;
