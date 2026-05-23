@@ -53,8 +53,9 @@ export class ChatService {
     if (!conv) return false;
     const mid = String(conv.managerId);
     const did = String(conv.driverId);
-    if (isManager(role)) return mid === userId;
-    if (isDriver(role)) return did === userId;
+    const uid = String(userId);
+    if (isManager(role)) return mid === uid;
+    if (isDriver(role)) return did === uid;
     return false;
   }
 
@@ -161,7 +162,7 @@ export class ChatService {
       body: m.body,
       type: m.type,
       meta: m.meta ?? {},
-      createdAt: m.createdAt,
+      createdAt: m.createdAt?.toISOString?.() ?? m.createdAt,
     }));
   }
 
@@ -207,7 +208,7 @@ export class ChatService {
       body: msg.body,
       type: msg.type,
       meta: {},
-      createdAt: msg.createdAt,
+      createdAt: msg.createdAt?.toISOString?.() ?? msg.createdAt,
       recipientId,
     };
   }

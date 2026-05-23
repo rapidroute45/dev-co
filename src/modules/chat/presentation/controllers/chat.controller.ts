@@ -6,7 +6,10 @@ import { ChatService } from '../../application/services/chat.service';
 const MANAGER_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
 
 export class ChatController {
-  constructor(private chatService: ChatService) {}
+  constructor(
+    private chatService: ChatService,
+    private emitMessage?: (message: Awaited<ReturnType<ChatService['sendMessage']>>) => void
+  ) {}
 
   listConversations = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -70,6 +73,23 @@ export class ChatController {
         String(req.params.id)
       );
       res.status(200).json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  sendMessage = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const { body } = req.body as { body?: string };
+      const data = await this.chatService.sendMessage({
+        conversationId: String(req.params.id),
+        senderId: req.user.id,
+        senderRole: req.user.role,
+        body: String(body ?? '').trim(),
+      });
+      this.emitMessage?.(data);
+      res.status(201).json({ success: true, data });
     } catch (e) {
       next(e);
     }

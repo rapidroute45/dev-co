@@ -78,13 +78,8 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
           senderRole: user.role,
           body: String(payload?.body ?? '').trim(),
         });
-        io?.to(roomForConversation(message.conversationId)).emit('message:new', message);
-        io?.to(roomForUser(message.recipientId)).emit('conversation:updated', {
-          conversationId: message.conversationId,
-        });
-        io?.to(roomForUser(user.id)).emit('conversation:updated', {
-          conversationId: message.conversationId,
-        });
+        emitNewChatMessage(message);
+        socket.emit('message:new', message);
       } catch (err) {
         socket.emit('error', { message: (err as Error).message });
       }
@@ -114,6 +109,30 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
   });
 
   return io;
+}
+
+export function emitNewChatMessage(message: {
+  id: string;
+  conversationId: string;
+  senderId: string;
+  body: string;
+  type: string;
+  meta?: Record<string, unknown>;
+  createdAt: Date | string;
+  recipientId: string;
+}) {
+  if (!io) return;
+  const payload = {
+    ...message,
+    createdAt: message.createdAt,
+  };
+  io.to(roomForConversation(message.conversationId)).emit('message:new', payload);
+  io.to(roomForUser(message.recipientId)).emit('conversation:updated', {
+    conversationId: message.conversationId,
+  });
+  io.to(roomForUser(message.senderId)).emit('conversation:updated', {
+    conversationId: message.conversationId,
+  });
 }
 
 export function emitDeliveryPhotoAlert(payload: {
