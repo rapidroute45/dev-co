@@ -28,6 +28,7 @@ import { ListRoutesUseCase } from '../../application/use-cases/listRoutes.use-ca
 import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { RouteController } from '../controllers/route.controller';
+import { chatService } from '../../../chat/presentation/routes/chat.routes';
 
 const router = Router();
 
@@ -54,7 +55,8 @@ const routeDelivery = new RouteDeliveryUseCase(
   routeStopRepo,
   driverLocationRepo,
   addressCodeRepo,
-  routeStopEnrichment
+  routeStopEnrichment,
+  chatService
 );
 
 const controller = new RouteController(

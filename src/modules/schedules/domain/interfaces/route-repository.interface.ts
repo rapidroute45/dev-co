@@ -22,6 +22,7 @@ export interface RouteUpdateData {
   driverLocationAt?: Date | null;
   startedAt?: Date | null;
   completedAt?: Date | null;
+  deliveryVerification?: DeliveryVerification | null;
 }
 
 export interface RouteListFilters {
