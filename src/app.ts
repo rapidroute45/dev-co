@@ -12,6 +12,7 @@ import { scheduleRoutes, routeRoutes, availabilityRoutes } from './modules/sched
 import { dashboardRoutes } from './modules/dashboard';
 import { notificationRoutes } from './modules/notifications';
 import { driverDocumentRoutes } from './modules/driver-documents';
+import { chatRoutes } from './modules/chat';
 import { AppError } from './shared/errors/app-error';
 import { UPLOADS_DIR } from './shared/upload/upload.config';
 
@@ -40,6 +41,7 @@ app.use('/api/v1/availability', availabilityRoutes);
 app.use('/api/v1/dashboard', dashboardRoutes);
 app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/driver-documents', driverDocumentRoutes);
+app.use('/api/v1/chat', chatRoutes);
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof multer.MulterError) {

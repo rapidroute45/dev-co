@@ -30,6 +30,11 @@ const RouteSchema = new Schema(
     driverLocationAt: { type: Date, default: null },
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
+    deliveryVerification: {
+      type: String,
+      enum: ['pending', 'verified', 'rejected'],
+      default: null,
+    },
   },
   { timestamps: true }
 );

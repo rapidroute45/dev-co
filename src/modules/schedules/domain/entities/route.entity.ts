@@ -1,4 +1,5 @@
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
+import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
 
 export interface RouteProps {
   id?: string;
@@ -24,6 +25,7 @@ export interface RouteProps {
   driverLocationAt?: Date | null;
   startedAt?: Date | null;
   completedAt?: Date | null;
+  deliveryVerification?: DeliveryVerification | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -113,6 +115,9 @@ export class Route {
   }
   get completedAt() {
     return this.props.completedAt ?? null;
+  }
+  get deliveryVerification() {
+    return this.props.deliveryVerification ?? null;
   }
   get createdAt() {
     return this.props.createdAt;

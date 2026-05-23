@@ -1,5 +1,9 @@
 import { AppError } from '../../../../shared/errors/app-error';
 import { ROUTE_STATUSES, RouteStatus } from '../../../../shared/constants/routeStatuses';
+import {
+  DELIVERY_VERIFICATIONS,
+  DeliveryVerification,
+} from '../../../../shared/constants/deliveryVerification';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { RouteValidationService } from '../services/routeValidation.service';
 import { NotificationService } from '../../../notifications/application/services/notification.service';
@@ -111,8 +115,32 @@ export class UpdateRouteUseCase {
             400
           );
         }
+        patch.deliveryVerification = DeliveryVerification.REJECTED;
       }
       patch.status = status;
+    }
+
+    if (dto.deliveryVerification !== undefined) {
+      const verification = String(dto.deliveryVerification) as DeliveryVerification;
+      if (!DELIVERY_VERIFICATIONS.includes(verification)) {
+        throw new AppError('Invalid delivery verification.', 400);
+      }
+      if (
+        existing.status !== RouteStatus.COMPLETED &&
+        existing.status !== RouteStatus.NOT_VERIFIED
+      ) {
+        throw new AppError(
+          'Delivery verification applies to completed routes only.',
+          400
+        );
+      }
+      patch.deliveryVerification = verification;
+      if (verification === DeliveryVerification.VERIFIED) {
+        patch.status = RouteStatus.COMPLETED;
+      }
+      if (verification === DeliveryVerification.REJECTED) {
+        patch.status = RouteStatus.NOT_VERIFIED;
+      }
     } else if (driverChanged) {
       patch.status = RouteStatus.PENDING;
     } else if (!driverId && existing.driverId) {

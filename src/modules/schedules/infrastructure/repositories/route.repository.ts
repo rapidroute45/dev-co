@@ -7,6 +7,7 @@ import {
 import { parseScheduleDate } from '../../application/utils/scheduleDate';
 import { RouteModel } from '../models/route.model';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
+import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
 import { ROUTE_ACTIVE_STATUSES } from '../../../../shared/constants/routeStatuses';
 
 function mapDoc(doc: {
@@ -33,6 +34,7 @@ function mapDoc(doc: {
   driverLocationAt?: Date | null;
   startedAt?: Date | null;
   completedAt?: Date | null;
+  deliveryVerification?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }): Route {
@@ -60,6 +62,7 @@ function mapDoc(doc: {
     driverLocationAt: doc.driverLocationAt ?? null,
     startedAt: doc.startedAt ?? null,
     completedAt: doc.completedAt ?? null,
+    deliveryVerification: (doc.deliveryVerification as DeliveryVerification) ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });

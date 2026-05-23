@@ -87,6 +87,7 @@ export function mapRouteToResponse(
     arrivalMinutes: route.arrivalMinutes,
     departureMinutes: route.departureMinutes,
     status: route.status,
+    deliveryVerification: route.deliveryVerification,
     assignedBy: route.assignedBy,
     notes: route.notes,
     createdAt: route.createdAt,

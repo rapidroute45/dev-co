@@ -4,6 +4,7 @@ import {
   RouteStopStatus,
 } from '../../../../shared/constants/routeStopStatuses';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
+import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
 import { publicUploadPath } from '../../../../shared/upload/upload.config';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
@@ -12,6 +13,7 @@ import { DriverLocationRepository } from '../../infrastructure/repositories/driv
 import { sumLocationPathMiles } from '../utils/haversine';
 import { mapStopsToResponse } from '../utils/routeStops';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
+import { ChatService } from '../../../chat/application/services/chat.service';
 
 export class RouteDeliveryUseCase {
   constructor(
@@ -19,7 +21,8 @@ export class RouteDeliveryUseCase {
     private routeStopRepo: IRouteStopRepository,
     private driverLocationRepo: DriverLocationRepository,
     private addressCodeRepo: AddressAccessCodeRepository,
-    private routeStopEnrichment: RouteStopEnrichmentService
+    private routeStopEnrichment: RouteStopEnrichmentService,
+    private chatService?: ChatService
   ) {}
 
   private async assertDriverRoute(routeId: string, driverId: string) {
@@ -92,6 +95,18 @@ export class RouteDeliveryUseCase {
       lat: coords?.lat ?? null,
       lng: coords?.lng ?? null,
     });
+
+    if (updated && this.chatService) {
+      void this.chatService
+        .notifyDeliveryPhoto({
+          routeId,
+          driverId,
+          stopId,
+          stopName: updated.name ?? stop.name,
+          photoUrl: publicUploadPath(photoFilename),
+        })
+        .catch((err) => console.warn('[chat] delivery photo notify failed', err));
+    }
 
     return updated;
   }
@@ -179,6 +194,7 @@ export class RouteDeliveryUseCase {
 
     const updated = await this.routeRepo.update(routeId, {
       status: RouteStatus.COMPLETED,
+      deliveryVerification: DeliveryVerification.PENDING,
       totalMiles: totalMiles > 0 ? totalMiles : route.mileage,
       completedAt: new Date(),
     });
