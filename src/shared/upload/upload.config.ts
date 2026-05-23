@@ -25,7 +25,9 @@ export const uploadMiddleware = multer({
   fileFilter: (_req, file, cb) => {
     const allowed =
       /^image\/(jpeg|jpg|png|webp|heic|heif)$/i.test(file.mimetype) ||
-      file.mimetype === 'application/pdf';
+      file.mimetype === 'application/pdf' ||
+      (file.mimetype === 'application/octet-stream' &&
+        /\.(jpe?g|png|webp|heic|heif)$/i.test(file.originalname));
     cb(null, allowed);
   },
 });
