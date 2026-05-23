@@ -1,4 +1,5 @@
 import { Route } from '../entities/route.entity';
+import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 
 export interface RouteUpdateData {
