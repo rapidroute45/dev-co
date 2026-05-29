@@ -3,7 +3,7 @@ import { SCHEDULE_STATUSES, ScheduleStatus } from '../../../../shared/constants/
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { IStoreRepository } from '../../../stores/domain/interfaces/store-repository.interface';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
-import { parseScheduleDate } from '../utils/scheduleDate';
+import { parseFutureScheduleDate } from '../utils/scheduleDate';
 import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
@@ -21,7 +21,7 @@ export class UpdateScheduleUseCase {
 
     const patch: Parameters<IScheduleRepository['update']>[1] = {};
 
-    if (dto.date !== undefined) patch.date = parseScheduleDate(String(dto.date));
+    if (dto.date !== undefined) patch.date = parseFutureScheduleDate(String(dto.date));
     if (dto.city !== undefined) patch.city = String(dto.city).trim();
     if (dto.state !== undefined) patch.state = String(dto.state).trim();
     if (dto.storeId !== undefined) {

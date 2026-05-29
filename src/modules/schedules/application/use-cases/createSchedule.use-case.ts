@@ -5,7 +5,7 @@ import { IScheduleRepository } from '../../domain/interfaces/schedule-repository
 import { IStoreRepository } from '../../../stores/domain/interfaces/store-repository.interface';
 import { CreateStoreUseCase } from '../../../stores/application/use-cases/createStore.use-case';
 import { CreateScheduleDTO } from '../dto/create-schedule.dto';
-import { parseScheduleDate } from '../utils/scheduleDate';
+import { parseFutureScheduleDate } from '../utils/scheduleDate';
 import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 
@@ -21,7 +21,7 @@ export class CreateScheduleUseCase {
     if (!city) throw new AppError('City is required.', 400);
     if (!state) throw new AppError('State is required.', 400);
 
-    const date = parseScheduleDate(dto.date);
+    const date = parseFutureScheduleDate(dto.date);
 
     let storeId = dto.storeId;
     let storeResponse = null;

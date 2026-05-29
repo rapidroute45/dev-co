@@ -6,6 +6,7 @@ function mapDoc(doc: {
   _id: { toString(): string };
   name: string;
   code: string;
+  teamNumber?: number | null;
   teamLeadId?: { toString(): string } | null;
   createdBy: { toString(): string };
   createdAt?: Date;
@@ -15,6 +16,7 @@ function mapDoc(doc: {
     id: doc._id.toString(),
     name: doc.name,
     code: doc.code,
+    teamNumber: doc.teamNumber ?? 0,
     teamLeadId: doc.teamLeadId?.toString() ?? null,
     createdBy: doc.createdBy.toString(),
     createdAt: doc.createdAt,
@@ -43,10 +45,19 @@ export class TeamRepository implements ITeamRepository {
     return TeamModel.countDocuments({ code: new RegExp(`^${escaped}-`, 'i') });
   }
 
+  async getMaxTeamNumber(): Promise<number> {
+    const highest = await TeamModel.findOne({ teamNumber: { $ne: null } })
+      .sort({ teamNumber: -1 })
+      .select('teamNumber')
+      .lean();
+    return highest?.teamNumber ?? 0;
+  }
+
   async save(team: Team): Promise<Team> {
     const created = await TeamModel.create({
       name: team.name,
       code: team.code,
+      teamNumber: team.teamNumber,
       teamLeadId: team.teamLeadId ?? null,
       createdBy: team.createdBy,
     });

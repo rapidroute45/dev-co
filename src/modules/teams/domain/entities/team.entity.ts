@@ -2,6 +2,7 @@ export interface TeamProps {
   id?: string;
   name: string;
   code: string;
+  teamNumber: number;
   teamLeadId?: string | null;
   createdBy: string;
   createdAt?: Date;
@@ -19,6 +20,9 @@ export class Team {
   }
   get code() {
     return this.props.code;
+  }
+  get teamNumber() {
+    return this.props.teamNumber;
   }
   get teamLeadId() {
     return this.props.teamLeadId;

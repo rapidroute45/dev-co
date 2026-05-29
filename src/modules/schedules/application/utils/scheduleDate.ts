@@ -1,6 +1,9 @@
 import { AppError } from '../../../../shared/errors/app-error';
 
-/** Normalizes YYYY-MM-DD to UTC start-of-day Date. */
+/**
+ * Normalizes YYYY-MM-DD to UTC start-of-day Date.
+ * Use for reading/listing — past dates are allowed so history is viewable.
+ */
 export function parseScheduleDate(input: string): Date {
   const trimmed = input?.trim();
   if (!trimmed || !/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
@@ -11,6 +14,16 @@ export function parseScheduleDate(input: string): Date {
   if (Number.isNaN(date.getTime())) {
     throw new AppError('Invalid schedule date.', 400);
   }
+
+  return date;
+}
+
+/**
+ * Same as parseScheduleDate but rejects past dates.
+ * Use only when creating/moving a schedule — you cannot schedule into the past.
+ */
+export function parseFutureScheduleDate(input: string): Date {
+  const date = parseScheduleDate(input);
 
   const today = new Date();
   today.setUTCHours(0, 0, 0, 0);

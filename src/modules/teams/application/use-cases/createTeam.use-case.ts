@@ -2,7 +2,11 @@ import { AppError } from '../../../../shared/errors/app-error';
 import { Team } from '../../domain/entities/team.entity';
 import { ITeamRepository } from '../../domain/interfaces/team-repository.interface';
 import { CreateTeamDTO } from '../dto/create-team.dto';
-import { buildTeamCodePrefix, formatTeamCode } from '../utils/generateTeamCode';
+import {
+  buildTeamCodePrefix,
+  formatTeamCode,
+  nextTeamNumber,
+} from '../utils/generateTeamCode';
 
 export class CreateTeamUseCase {
   constructor(private teamRepo: ITeamRepository) {}
@@ -22,9 +26,13 @@ export class CreateTeamUseCase {
       throw new AppError('Team code collision. Please try again.', 409);
     }
 
+    const currentMax = await this.teamRepo.getMaxTeamNumber();
+    const teamNumber = nextTeamNumber(currentMax);
+
     const team = new Team({
       name,
       code,
+      teamNumber,
       createdBy: createdByUserId,
       teamLeadId: null,
     });
@@ -34,6 +42,7 @@ export class CreateTeamUseCase {
       id: saved.id,
       name: saved.name,
       code: saved.code,
+      teamNumber: saved.teamNumber,
       teamLeadId: saved.teamLeadId,
       createdBy: saved.createdBy,
       createdAt: saved.createdAt,

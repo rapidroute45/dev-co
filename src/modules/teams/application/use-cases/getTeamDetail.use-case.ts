@@ -59,6 +59,7 @@ export class GetTeamDetailUseCase {
       id: team.id,
       name: team.name,
       code: team.code,
+      teamNumber: team.teamNumber,
       teamLeadId: team.teamLeadId,
       teamLead,
       drivers,

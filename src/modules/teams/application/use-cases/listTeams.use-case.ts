@@ -37,6 +37,7 @@ export class ListTeamsUseCase {
           id: team.id,
           name: team.name,
           code: team.code,
+          teamNumber: team.teamNumber,
           teamLeadId: team.teamLeadId,
           teamLeadName,
           teamLeadEmail,

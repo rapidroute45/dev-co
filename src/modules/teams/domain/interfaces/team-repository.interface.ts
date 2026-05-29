@@ -10,6 +10,8 @@ export interface ITeamRepository {
   findByCode(code: string): Promise<Team | null>;
   findAll(): Promise<Team[]>;
   countByCodePrefix(prefix: string): Promise<number>;
+  /** Highest assigned team number, or 0 when no teams exist. */
+  getMaxTeamNumber(): Promise<number>;
   save(team: Team): Promise<Team>;
   update(teamId: string, data: TeamUpdateData): Promise<Team | null>;
   setTeamLead(teamId: string, userId: string | null): Promise<Team | null>;

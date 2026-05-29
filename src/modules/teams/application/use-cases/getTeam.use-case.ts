@@ -14,6 +14,7 @@ export class GetTeamUseCase {
       id: team.id,
       name: team.name,
       code: team.code,
+      teamNumber: team.teamNumber,
       teamLeadId: team.teamLeadId,
       createdBy: team.createdBy,
       createdAt: team.createdAt,

@@ -21,6 +21,7 @@ export class GetTeamMembersUseCase {
         id: team.id,
         name: team.name,
         code: team.code,
+        teamNumber: team.teamNumber,
         teamLeadId: team.teamLeadId,
       },
       members: members.map((m) => ({
