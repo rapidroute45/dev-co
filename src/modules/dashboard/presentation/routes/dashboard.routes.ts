@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { managerGuard } from '../../../../shared/middleware/managerGuard';
+import { teamLeadGuard } from '../../../../shared/middleware/teamLeadGuard';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { TeamRepository } from '../../../teams/infrastructure/repositories/team.repository';
 import { RouteRepository } from '../../../schedules/infrastructure/repositories/route.repository';
@@ -17,5 +18,8 @@ const controller = new DashboardController(service);
 
 router.get('/stats', managerGuard, controller.getStats);
 router.get('/available-drivers', managerGuard, controller.listAvailableDrivers);
+
+router.get('/team/stats', teamLeadGuard, controller.getTeamStats);
+router.get('/team/available-drivers', teamLeadGuard, controller.listTeamAvailableDrivers);
 
 export default router;

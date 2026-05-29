@@ -118,6 +118,16 @@ export class RouteRepository implements IRouteRepository {
     return RouteModel.countDocuments(query);
   }
 
+  async countByTeamAndScheduleDate(
+    teamId: string,
+    scheduleDate: Date,
+    status?: RouteStatus
+  ): Promise<number> {
+    const query: Record<string, unknown> = { teamId, scheduleDate };
+    if (status) query.status = status;
+    return RouteModel.countDocuments(query);
+  }
+
   /** Drivers assigned to a route on this date (offer sent, active, or in progress). */
   async findBusyDriverIdsOnDate(scheduleDate: Date): Promise<string[]> {
     const ids = await RouteModel.distinct('driverId', {

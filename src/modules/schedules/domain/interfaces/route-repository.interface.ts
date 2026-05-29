@@ -42,6 +42,7 @@ export interface IRouteRepository {
   countByScheduleId(scheduleId: string): Promise<number>;
   countPendingRoutesByScheduleId(scheduleId: string): Promise<number>;
   countByScheduleDate(scheduleDate: Date, status?: RouteStatus): Promise<number>;
+  countByTeamAndScheduleDate(teamId: string, scheduleDate: Date, status?: RouteStatus): Promise<number>;
   findBusyDriverIdsOnDate(scheduleDate: Date): Promise<string[]>;
   findManyByDriverId(driverId: string, filters?: { fromDate?: Date; toDate?: Date }): Promise<Route[]>;
   findOverlappingForDriver(params: {

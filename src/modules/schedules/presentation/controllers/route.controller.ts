@@ -131,6 +131,34 @@ export class RouteController {
     }
   };
 
+  /** Team lead assigns/changes the driver on a route they own (sends an offer). */
+  assignDriver = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+
+      const { driverId } = req.body as { driverId?: string };
+      if (!driverId) return next(new AppError('driverId is required.', 400));
+
+      const route = await this.getRouteUseCase.execute(String(req.params.id), req.user);
+      if (!req.user.teamId || route.teamId !== req.user.teamId) {
+        return next(new AppError('You can only assign drivers to your own team routes.', 403));
+      }
+
+      const data = await this.updateRouteUseCase.execute(
+        String(req.params.id),
+        { driverId },
+        req.user.id
+      );
+      res.status(200).json({
+        success: true,
+        message: 'Driver offer sent. The route stays pending until the driver accepts.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   accept = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
