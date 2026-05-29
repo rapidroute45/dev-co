@@ -3,6 +3,7 @@ import { IScheduleRepository, ScheduleListFilters } from '../../domain/interface
 import { IStoreRepository } from '../../../stores/domain/interfaces/store-repository.interface';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
+import { UserRole } from '../../../../shared/constants/roles';
 import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 
@@ -13,7 +14,10 @@ export class ListSchedulesUseCase {
     private routeRepo: IRouteRepository
   ) {}
 
-  async execute(query: Record<string, string>) {
+  async execute(
+    query: Record<string, string>,
+    actor?: { role: UserRole | null; teamId?: string | null }
+  ) {
     const date = query.date?.trim();
     if (!date) {
       throw new AppError('date query parameter is required (YYYY-MM-DD).', 400);
@@ -29,6 +33,25 @@ export class ListSchedulesUseCase {
     };
     if (query.status && Object.values(ScheduleStatus).includes(query.status as ScheduleStatus)) {
       filters.status = query.status as ScheduleStatus;
+    }
+
+    // Team leads only see schedules that contain routes assigned to their team.
+    if (actor?.role === UserRole.TEAM_LEAD) {
+      if (!actor.teamId) {
+        return { items: [], total: 0, page: filters.page ?? 1, limit: filters.limit ?? 20 };
+      }
+      const teamRoutes = await this.routeRepo.findMany({
+        date,
+        teamId: actor.teamId,
+        limit: 100,
+      });
+      const scheduleIds = Array.from(
+        new Set(teamRoutes.items.map((route) => route.scheduleId).filter(Boolean))
+      ) as string[];
+      if (scheduleIds.length === 0) {
+        return { items: [], total: 0, page: filters.page ?? 1, limit: filters.limit ?? 20 };
+      }
+      filters.scheduleIds = scheduleIds;
     }
 
     const { items, total } = await this.scheduleRepo.findMany(filters);

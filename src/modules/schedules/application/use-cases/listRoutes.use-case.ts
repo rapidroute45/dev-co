@@ -1,5 +1,6 @@
 import { AppError } from '../../../../shared/errors/app-error';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
+import { UserRole } from '../../../../shared/constants/roles';
 import { IRouteRepository, RouteListFilters } from '../../domain/interfaces/route-repository.interface';
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { IStoreRepository } from '../../../stores/domain/interfaces/store-repository.interface';
@@ -19,7 +20,10 @@ export class ListRoutesUseCase {
     private teamRepo: ITeamRepository
   ) {}
 
-  async execute(query: Record<string, string>) {
+  async execute(
+    query: Record<string, string>,
+    actor?: { role: UserRole | null; teamId?: string | null }
+  ) {
     const date = query.date?.trim();
     if (!date) {
       throw new AppError('date query parameter is required (YYYY-MM-DD).', 400);
@@ -33,6 +37,14 @@ export class ListRoutesUseCase {
 
     if (query.status && Object.values(RouteStatus).includes(query.status as RouteStatus)) {
       filters.status = query.status as RouteStatus;
+    }
+
+    // Team leads only ever see their own team's routes.
+    if (actor?.role === UserRole.TEAM_LEAD) {
+      if (!actor.teamId) {
+        return { items: [], total: 0, page: filters.page ?? 1, limit: filters.limit ?? 50 };
+      }
+      filters.teamId = actor.teamId;
     }
 
     const city = query.city?.trim();

@@ -8,6 +8,7 @@ export interface ScheduleListFilters {
   storeId?: string;
   status?: ScheduleStatus;
   createdBy?: string;
+  scheduleIds?: string[];
   page?: number;
   limit?: number;
 }

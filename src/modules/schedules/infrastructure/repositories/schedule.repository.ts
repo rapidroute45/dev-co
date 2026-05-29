@@ -42,6 +42,7 @@ function buildQuery(filters?: ScheduleListFilters) {
   if (filters?.storeId) query.storeId = filters.storeId;
   if (filters?.status) query.status = filters.status;
   if (filters?.createdBy) query.createdBy = filters.createdBy;
+  if (filters?.scheduleIds) query._id = { $in: filters.scheduleIds };
   return query;
 }
 

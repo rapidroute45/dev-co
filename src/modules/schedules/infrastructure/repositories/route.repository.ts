@@ -79,6 +79,7 @@ export class RouteRepository implements IRouteRepository {
       scheduleDate: parseScheduleDate(filters.date),
     };
     if (filters.status) query.status = filters.status;
+    if (filters.teamId) query.teamId = filters.teamId;
     if (filters.scheduleIds?.length) {
       query.scheduleId = { $in: filters.scheduleIds };
     }

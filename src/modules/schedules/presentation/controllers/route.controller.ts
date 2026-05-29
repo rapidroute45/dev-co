@@ -44,7 +44,8 @@ export class RouteController {
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.listRoutesUseCase.execute(
-        req.query as Record<string, string>
+        req.query as Record<string, string>,
+        req.user
       );
       res.status(200).json({
         success: true,

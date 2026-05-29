@@ -30,6 +30,7 @@ export interface RouteListFilters {
   date: string;
   status?: RouteStatus;
   scheduleIds?: string[];
+  teamId?: string;
   page?: number;
   limit?: number;
 }
