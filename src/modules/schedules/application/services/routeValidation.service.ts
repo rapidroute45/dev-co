@@ -57,7 +57,8 @@ export class RouteValidationService {
       throw new AppError('Selected driver does not belong to the selected team.', 400);
     }
 
-    const allowedRoles = [UserRole.DRIVER, UserRole.TEAM_DRIVER];
+    // Team leads may be assigned to drive their own team's routes.
+    const allowedRoles = [UserRole.DRIVER, UserRole.TEAM_DRIVER, UserRole.TEAM_LEAD];
     if (!driver.role || !allowedRoles.includes(driver.role)) {
       throw new AppError('Selected user is not a driver role.', 400);
     }

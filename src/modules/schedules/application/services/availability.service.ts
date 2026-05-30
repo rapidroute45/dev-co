@@ -6,7 +6,8 @@ import { parseTimeToMinutes } from '../../../../shared/utils/parseTime';
 import { parseScheduleDate } from '../utils/scheduleDate';
 import { AppError } from '../../../../shared/errors/app-error';
 
-const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER];
+// Team leads can drive their own team's routes, so they count as assignable.
+const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER, UserRole.TEAM_LEAD];
 
 export class AvailabilityService {
   constructor(
