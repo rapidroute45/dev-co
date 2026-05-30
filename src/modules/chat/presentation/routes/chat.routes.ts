@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { requireAuth } from '../../../../shared/middleware/auth.middleware';
+import { voiceUploadMiddleware } from '../../../../shared/upload/upload.config';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { RouteRepository } from '../../../schedules/infrastructure/repositories/route.repository';
 import { ChatService } from '../../application/services/chat.service';
@@ -20,6 +21,11 @@ router.post('/conversations', controller.createConversation);
 router.post('/conversations/open', controller.openConversation);
 router.get('/conversations/:id/messages', controller.listMessages);
 router.post('/conversations/:id/messages', controller.sendMessage);
+router.post(
+  '/conversations/:id/voice',
+  voiceUploadMiddleware.single('audio'),
+  controller.sendVoiceMessage
+);
 
 export default router;
 export { chatService };

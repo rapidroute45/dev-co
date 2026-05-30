@@ -63,11 +63,22 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
       ids.forEach((id) => void socket.join(roomForConversation(id)));
     });
 
+    // Mark everything addressed to this user as delivered now they're online.
+    void chatService.markConversationsDelivered(user.id, user.role);
+
     socket.on('conversation:join', async (payload: { conversationId?: string }) => {
       const conversationId = payload?.conversationId;
       if (!conversationId) return;
       const ok = await chatService.userInConversation(user.id, user.role, conversationId);
       if (ok) void socket.join(roomForConversation(conversationId));
+    });
+
+    socket.on('message:delivered', async (payload: { conversationId?: string }) => {
+      await chatService.markConversationsDelivered(
+        user.id,
+        user.role,
+        payload?.conversationId ? String(payload.conversationId) : undefined
+      );
     });
 
     socket.on('message:send', async (payload: { conversationId?: string; body?: string }) => {
@@ -122,6 +133,17 @@ export function emitMessagesRead(payload: {
   });
 }
 
+export function emitMessagesDelivered(payload: {
+  conversationId: string;
+  userId: string;
+}) {
+  if (!io) return;
+  io.to(roomForConversation(payload.conversationId)).emit('messages:delivered', {
+    conversationId: payload.conversationId,
+    userId: payload.userId,
+  });
+}
+
 export function emitNewChatMessage(message: {
   id: string;
   conversationId: string;
@@ -132,6 +154,7 @@ export function emitNewChatMessage(message: {
   createdAt: Date | string;
   recipientId: string;
   readBy?: string[];
+  deliveredTo?: string[];
 }) {
   if (!io) return;
   const payload = {

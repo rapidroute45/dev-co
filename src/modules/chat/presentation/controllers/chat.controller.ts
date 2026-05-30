@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../../../../shared/errors/app-error';
 import { UserRole } from '../../../../shared/constants/roles';
+import { publicUploadPath } from '../../../../shared/upload/upload.config';
 import { ChatService } from '../../application/services/chat.service';
 
 const MANAGER_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
@@ -8,7 +9,9 @@ const MANAGER_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
 export class ChatController {
   constructor(
     private chatService: ChatService,
-    private emitMessage?: (message: Awaited<ReturnType<ChatService['sendMessage']>>) => void
+    private emitMessage?: (
+      message: Awaited<ReturnType<ChatService['sendMessage']>>
+    ) => void
   ) {}
 
   listConversations = async (req: Request, res: Response, next: NextFunction) => {
@@ -87,6 +90,28 @@ export class ChatController {
         senderId: req.user.id,
         senderRole: req.user.role,
         body: String(body ?? '').trim(),
+      });
+      this.emitMessage?.(data);
+      res.status(201).json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  sendVoiceMessage = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      if (!req.file) return next(new AppError('Audio file is required.', 400));
+
+      const durationRaw = (req.body as { durationMs?: string })?.durationMs;
+      const durationMs = Number(durationRaw);
+
+      const data = await this.chatService.sendVoiceMessage({
+        conversationId: String(req.params.id),
+        senderId: req.user.id,
+        senderRole: req.user.role,
+        audioUrl: publicUploadPath(req.file.filename),
+        durationMs: Number.isFinite(durationMs) ? durationMs : 0,
       });
       this.emitMessage?.(data);
       res.status(201).json({ success: true, data });

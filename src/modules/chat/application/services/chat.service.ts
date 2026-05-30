@@ -5,7 +5,11 @@ import { UserRepository } from '../../../auth/infrastructure/repositories/user.r
 import { IRouteRepository } from '../../../schedules/domain/interfaces/route-repository.interface';
 import { ConversationModel } from '../../infrastructure/models/conversation.model';
 import { MessageModel } from '../../infrastructure/models/message.model';
-import { emitDeliveryPhotoAlert, emitMessagesRead } from '../../socket/chat.socket';
+import {
+  emitDeliveryPhotoAlert,
+  emitMessagesDelivered,
+  emitMessagesRead,
+} from '../../socket/chat.socket';
 
 const MANAGER_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
 const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER];
@@ -150,19 +154,23 @@ export class ChatService {
       .limit(limit)
       .lean();
 
+    const objectUserId = new Types.ObjectId(userId);
     const readResult = await MessageModel.updateMany(
-      { conversationId, readBy: { $ne: new Types.ObjectId(userId) } },
-      { $addToSet: { readBy: new Types.ObjectId(userId) } }
+      { conversationId, readBy: { $ne: objectUserId } },
+      { $addToSet: { readBy: objectUserId, deliveredTo: objectUserId } }
     );
 
     // Tell the other participant their messages were read (live tick update).
     if (readResult.modifiedCount > 0) {
       emitMessagesRead({ conversationId, readerId: String(userId) });
+      emitMessagesDelivered({ conversationId, userId: String(userId) });
     }
 
     return rows.reverse().map((m) => {
       const readBy = (m.readBy ?? []).map(String);
+      const deliveredTo = (m.deliveredTo ?? []).map(String);
       if (!readBy.includes(String(userId))) readBy.push(String(userId));
+      if (!deliveredTo.includes(String(userId))) deliveredTo.push(String(userId));
       return {
         id: String(m._id),
         conversationId: String(m.conversationId),
@@ -171,9 +179,52 @@ export class ChatService {
         type: m.type,
         meta: m.meta ?? {},
         readBy,
+        deliveredTo,
         createdAt: m.createdAt?.toISOString?.() ?? m.createdAt,
       };
     });
+  }
+
+  /**
+   * Mark messages addressed to `userId` (i.e. sent by the other participant) as
+   * delivered, then notify senders so their ticks turn double-grey. Returns the
+   * conversation ids that actually changed.
+   */
+  async markConversationsDelivered(
+    userId: string,
+    role: UserRole | null,
+    conversationId?: string
+  ) {
+    const base = isManager(role)
+      ? { managerId: userId }
+      : isDriver(role)
+        ? { driverId: userId }
+        : null;
+    if (!base) return [];
+
+    const filter = conversationId ? { ...base, _id: conversationId } : base;
+    const convs = await ConversationModel.find(filter).select('_id').lean();
+
+    const objectUserId = new Types.ObjectId(userId);
+    const affected: string[] = [];
+
+    for (const c of convs) {
+      const result = await MessageModel.updateMany(
+        {
+          conversationId: c._id,
+          senderId: { $ne: objectUserId },
+          deliveredTo: { $ne: objectUserId },
+        },
+        { $addToSet: { deliveredTo: objectUserId } }
+      );
+      if (result.modifiedCount > 0) {
+        const cid = String(c._id);
+        affected.push(cid);
+        emitMessagesDelivered({ conversationId: cid, userId: String(userId) });
+      }
+    }
+
+    return affected;
   }
 
   async sendMessage(params: {
@@ -199,6 +250,7 @@ export class ChatService {
       senderId: params.senderId,
       body: params.body,
       type: 'text',
+      deliveredTo: [params.senderId],
       readBy: [params.senderId],
     });
 
@@ -218,6 +270,60 @@ export class ChatService {
       body: msg.body,
       type: msg.type,
       meta: {},
+      deliveredTo: [params.senderId],
+      readBy: [params.senderId],
+      createdAt: msg.createdAt?.toISOString?.() ?? msg.createdAt,
+      recipientId,
+    };
+  }
+
+  async sendVoiceMessage(params: {
+    conversationId: string;
+    senderId: string;
+    senderRole: UserRole | null;
+    audioUrl: string;
+    durationMs: number;
+  }) {
+    if (!params.audioUrl) throw new AppError('Audio file is required.', 400);
+
+    const conv = await ConversationModel.findById(params.conversationId);
+    if (!conv) throw new AppError('Conversation not found.', 404);
+
+    const allowed = await this.userInConversation(
+      params.senderId,
+      params.senderRole,
+      params.conversationId
+    );
+    if (!allowed) throw new AppError('Access denied.', 403);
+
+    const meta = { audioUrl: params.audioUrl, durationMs: params.durationMs };
+    const msg = await MessageModel.create({
+      conversationId: conv._id,
+      senderId: params.senderId,
+      body: 'Voice message',
+      type: 'voice',
+      meta,
+      deliveredTo: [params.senderId],
+      readBy: [params.senderId],
+    });
+
+    conv.lastMessageAt = new Date();
+    conv.lastMessagePreview = '🎤 Voice message';
+    conv.lastSenderId = new Types.ObjectId(params.senderId);
+    await conv.save();
+
+    const recipientId = isManager(params.senderRole)
+      ? String(conv.driverId)
+      : String(conv.managerId);
+
+    return {
+      id: String(msg._id),
+      conversationId: String(conv._id),
+      senderId: params.senderId,
+      body: msg.body,
+      type: msg.type,
+      meta,
+      deliveredTo: [params.senderId],
       readBy: [params.senderId],
       createdAt: msg.createdAt?.toISOString?.() ?? msg.createdAt,
       recipientId,
@@ -249,6 +355,7 @@ export class ChatService {
         photoUrl: params.photoUrl,
         stopName: params.stopName,
       },
+      deliveredTo: [params.driverId],
       readBy: [params.driverId],
     });
 
@@ -264,6 +371,7 @@ export class ChatService {
       body: msg.body,
       type: msg.type,
       meta: msg.meta,
+      deliveredTo: [params.driverId],
       readBy: [params.driverId],
       createdAt: msg.createdAt,
     };

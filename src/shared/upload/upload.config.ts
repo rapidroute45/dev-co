@@ -32,6 +32,19 @@ export const uploadMiddleware = multer({
   },
 });
 
+export const voiceUploadMiddleware = multer({
+  storage,
+  limits: { fileSize: 15 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    const allowed =
+      /^audio\//i.test(file.mimetype) ||
+      file.mimetype === 'video/mp4' || // .m4a is often reported as video/mp4
+      (file.mimetype === 'application/octet-stream' &&
+        /\.(m4a|mp3|aac|wav|caf|3gp|amr|ogg|webm|mp4)$/i.test(file.originalname));
+    cb(null, allowed);
+  },
+});
+
 export function publicUploadPath(filename: string): string {
   return `/uploads/${filename}`;
 }
