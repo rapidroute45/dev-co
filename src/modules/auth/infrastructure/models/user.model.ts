@@ -5,6 +5,7 @@ const UserSchema = new Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: true },
   fullName: { type: String, trim: true, default: null },
+  phone: { type: String, trim: true, default: null },
   role: {
     type: String,
     enum: [...Object.values(UserRole), null],

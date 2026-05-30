@@ -19,6 +19,7 @@ export interface UserListFilters {
 export interface UserUpdateData {
   email?: string;
   fullName?: string | null;
+  phone?: string | null;
   role?: UserRole | null;
   status?: UserStatus;
   teamId?: string | null;

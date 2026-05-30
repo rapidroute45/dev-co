@@ -3,6 +3,7 @@ import { RegisterUseCase } from '../../application/use-cases/register.use-case';
 import { LoginUseCase } from '../../application/use-cases/login.use-case';
 import { GetPendingUsersUseCase } from '../../application/use-cases/GetPendingUsers.use-case';
 import { GetCurrentUserUseCase } from '../../application/use-cases/getCurrentUser.use-case';
+import { UpdateProfileUseCase } from '../../application/use-cases/updateProfile.use-case';
 import { AppError } from '../../../../shared/errors/app-error';
 import { ENV } from '../../../../config/env';
 
@@ -11,7 +12,8 @@ export class AuthController {
     private registerUseCase: RegisterUseCase,
     private loginUseCase: LoginUseCase,
     private getPendingUsersUseCase: GetPendingUsersUseCase,
-    private getCurrentUserUseCase: GetCurrentUserUseCase
+    private getCurrentUserUseCase: GetCurrentUserUseCase,
+    private updateProfileUseCase: UpdateProfileUseCase
   ) {}
 
   register = async (req: Request, res: Response, next: NextFunction) => {
@@ -59,6 +61,24 @@ export class AuthController {
       if (!req.user) return next(new AppError('Unauthorized', 401));
       const userProfile = await this.getCurrentUserUseCase.execute(req.user.id);
       res.status(200).json({ success: true, data: userProfile });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  updateProfile = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return next(new AppError('Unauthorized', 401));
+      const { fullName, phone } = req.body as { fullName?: string; phone?: string };
+      const userProfile = await this.updateProfileUseCase.execute(req.user.id, {
+        fullName,
+        phone,
+      });
+      res.status(200).json({
+        success: true,
+        message: 'Profile updated successfully.',
+        data: userProfile,
+      });
     } catch (error) {
       next(error);
     }

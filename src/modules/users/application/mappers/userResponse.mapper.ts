@@ -17,6 +17,7 @@ export function mapUserToResponse(
     id: user.id,
     email: user.email,
     fullName: user.fullName,
+    phone: user.phone,
     displayName: resolveDisplayName(user.fullName, user.email),
     role: user.role,
     status: user.status,

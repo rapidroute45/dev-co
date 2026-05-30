@@ -5,6 +5,7 @@ export interface UserProps {
   email: string;
   passwordHash: string;
   fullName?: string | null;
+  phone?: string | null;
   role: UserRole | null;
   status: UserStatus;
   teamId?: string | null;
@@ -21,6 +22,7 @@ export class User {
       status: props.status ?? UserStatus.PENDING,
       role: props.role ?? null,
       fullName: props.fullName ?? null,
+      phone: props.phone ?? null,
     };
   }
 
@@ -28,6 +30,7 @@ export class User {
   get email() { return this.props.email; }
   get passwordHash() { return this.props.passwordHash; }
   get fullName() { return this.props.fullName ?? null; }
+  get phone() { return this.props.phone ?? null; }
   get role() { return this.props.role; }
   get status() { return this.props.status; }
   get teamId() { return this.props.teamId ?? null; }

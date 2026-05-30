@@ -8,6 +8,7 @@ import { requireAuth } from '../../../../shared/middleware/auth.middleware';
 import { managerGuard } from '../../../../shared/middleware/managerGuard';
 import { GetPendingUsersUseCase } from '../../application/use-cases/GetPendingUsers.use-case';
 import { GetCurrentUserUseCase } from '../../application/use-cases/getCurrentUser.use-case';
+import { UpdateProfileUseCase } from '../../application/use-cases/updateProfile.use-case';
 
 const router = Router();
 const userRepo = new UserRepository();
@@ -17,16 +18,19 @@ const registerUseCase = new RegisterUseCase(userRepo);
 const loginUseCase = new LoginUseCase(userRepo);
 const getPendingUsersUseCase = new GetPendingUsersUseCase(userRepo);
 const getCurrentUserUseCase = new GetCurrentUserUseCase(userRepo, teamRepo);
+const updateProfileUseCase = new UpdateProfileUseCase(userRepo, teamRepo);
 const controller = new AuthController(
   registerUseCase,
   loginUseCase,
   getPendingUsersUseCase,
-  getCurrentUserUseCase
+  getCurrentUserUseCase,
+  updateProfileUseCase
 );
 
 router.post('/register', controller.register);
 router.post('/login', controller.login);
 router.get('/me', requireAuth({ allowPending: true }), controller.me);
+router.patch('/me', requireAuth({ allowPending: true }), controller.updateProfile);
 
 /** @deprecated Use GET /api/v1/users?pending=true */
 router.get('/pending', managerGuard, controller.getPending);

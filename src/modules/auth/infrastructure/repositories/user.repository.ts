@@ -13,6 +13,7 @@ function mapDoc(doc: {
   email: string;
   password: string;
   fullName?: string | null;
+  phone?: string | null;
   role?: string | null;
   status: string;
   teamId?: { toString(): string } | null;
@@ -24,6 +25,7 @@ function mapDoc(doc: {
     email: doc.email,
     passwordHash: doc.password,
     fullName: doc.fullName ?? null,
+    phone: doc.phone ?? null,
     role: (doc.role as UserRole) ?? null,
     status: doc.status as UserStatus,
     teamId: doc.teamId?.toString() ?? null,
@@ -90,6 +92,7 @@ export class UserRepository implements IUserRepository {
       email: user.email,
       password: user.passwordHash,
       fullName: user.fullName,
+      phone: user.phone,
       role: user.role,
       status: user.status,
       teamId: user.teamId ?? null,
@@ -109,6 +112,7 @@ export class UserRepository implements IUserRepository {
     const patch: Record<string, unknown> = {};
     if (data.email !== undefined) patch.email = data.email.toLowerCase().trim();
     if (data.fullName !== undefined) patch.fullName = data.fullName;
+    if (data.phone !== undefined) patch.phone = data.phone;
     if (data.role !== undefined) patch.role = data.role;
     if (data.status !== undefined) patch.status = data.status;
     if (data.teamId !== undefined) patch.teamId = data.teamId;
