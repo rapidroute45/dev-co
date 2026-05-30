@@ -111,6 +111,17 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
   return io;
 }
 
+export function emitMessagesRead(payload: {
+  conversationId: string;
+  readerId: string;
+}) {
+  if (!io) return;
+  io.to(roomForConversation(payload.conversationId)).emit('messages:read', {
+    conversationId: payload.conversationId,
+    readerId: payload.readerId,
+  });
+}
+
 export function emitNewChatMessage(message: {
   id: string;
   conversationId: string;
@@ -120,6 +131,7 @@ export function emitNewChatMessage(message: {
   meta?: Record<string, unknown>;
   createdAt: Date | string;
   recipientId: string;
+  readBy?: string[];
 }) {
   if (!io) return;
   const payload = {

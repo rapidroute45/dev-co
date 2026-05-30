@@ -5,7 +5,7 @@ import { UserRepository } from '../../../auth/infrastructure/repositories/user.r
 import { IRouteRepository } from '../../../schedules/domain/interfaces/route-repository.interface';
 import { ConversationModel } from '../../infrastructure/models/conversation.model';
 import { MessageModel } from '../../infrastructure/models/message.model';
-import { emitDeliveryPhotoAlert } from '../../socket/chat.socket';
+import { emitDeliveryPhotoAlert, emitMessagesRead } from '../../socket/chat.socket';
 
 const MANAGER_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
 const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER];
@@ -150,20 +150,30 @@ export class ChatService {
       .limit(limit)
       .lean();
 
-    await MessageModel.updateMany(
+    const readResult = await MessageModel.updateMany(
       { conversationId, readBy: { $ne: new Types.ObjectId(userId) } },
       { $addToSet: { readBy: new Types.ObjectId(userId) } }
     );
 
-    return rows.reverse().map((m) => ({
-      id: String(m._id),
-      conversationId: String(m.conversationId),
-      senderId: String(m.senderId),
-      body: m.body,
-      type: m.type,
-      meta: m.meta ?? {},
-      createdAt: m.createdAt?.toISOString?.() ?? m.createdAt,
-    }));
+    // Tell the other participant their messages were read (live tick update).
+    if (readResult.modifiedCount > 0) {
+      emitMessagesRead({ conversationId, readerId: String(userId) });
+    }
+
+    return rows.reverse().map((m) => {
+      const readBy = (m.readBy ?? []).map(String);
+      if (!readBy.includes(String(userId))) readBy.push(String(userId));
+      return {
+        id: String(m._id),
+        conversationId: String(m.conversationId),
+        senderId: String(m.senderId),
+        body: m.body,
+        type: m.type,
+        meta: m.meta ?? {},
+        readBy,
+        createdAt: m.createdAt?.toISOString?.() ?? m.createdAt,
+      };
+    });
   }
 
   async sendMessage(params: {
@@ -208,6 +218,7 @@ export class ChatService {
       body: msg.body,
       type: msg.type,
       meta: {},
+      readBy: [params.senderId],
       createdAt: msg.createdAt?.toISOString?.() ?? msg.createdAt,
       recipientId,
     };
@@ -253,6 +264,7 @@ export class ChatService {
       body: msg.body,
       type: msg.type,
       meta: msg.meta,
+      readBy: [params.driverId],
       createdAt: msg.createdAt,
     };
 
