@@ -166,6 +166,37 @@ export class RouteRepository implements IRouteRepository {
     return docs.map(mapDoc);
   }
 
+  async findCompletedByDriverId(
+    driverId: string,
+    filters?: { fromDate?: Date; toDate?: Date }
+  ): Promise<Route[]> {
+    const query: Record<string, unknown> = {
+      driverId,
+      status: RouteStatus.COMPLETED,
+    };
+    if (filters?.fromDate || filters?.toDate) {
+      query.scheduleDate = {};
+      if (filters.fromDate) (query.scheduleDate as Record<string, Date>).$gte = filters.fromDate;
+      if (filters.toDate) (query.scheduleDate as Record<string, Date>).$lte = filters.toDate;
+    }
+    const docs = await RouteModel.find(query).sort({ scheduleDate: -1, arrivalMinutes: 1 });
+    return docs.map(mapDoc);
+  }
+
+  async findCompletedByTeamInRange(
+    teamId: string,
+    fromDate: Date,
+    toDate: Date
+  ): Promise<Route[]> {
+    const docs = await RouteModel.find({
+      teamId,
+      status: RouteStatus.COMPLETED,
+      driverId: { $ne: null },
+      scheduleDate: { $gte: fromDate, $lte: toDate },
+    }).sort({ scheduleDate: 1, arrivalMinutes: 1 });
+    return docs.map(mapDoc);
+  }
+
   async findOverlappingForDriver(params: {
     driverId: string;
     scheduleDate: Date;

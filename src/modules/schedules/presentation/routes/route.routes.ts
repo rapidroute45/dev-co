@@ -27,6 +27,7 @@ import { DeclineRouteUseCase } from '../../application/use-cases/declineRoute.us
 import { ListPendingRouteOffersUseCase } from '../../application/use-cases/listPendingRouteOffers.use-case';
 import { ListRoutesUseCase } from '../../application/use-cases/listRoutes.use-case';
 import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.use-case';
+import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { RouteController } from '../controllers/route.controller';
 import { chatService } from '../../../chat/presentation/routes/chat.routes';
@@ -110,6 +111,7 @@ const controller = new RouteController(
     teamRepo,
     routeStopEnrichment
   ),
+  new ListMyCompletedRoutesUseCase(routeRepo, scheduleRepo, storeRepo, teamRepo),
   new StartRouteUseCase(
     routeRepo,
     scheduleRepo,
@@ -122,6 +124,7 @@ const controller = new RouteController(
 
 router.get('/offers/pending', driverGuard, controller.listPendingOffers);
 router.get('/me', driverGuard, controller.listMyRoutes);
+router.get('/me/completed', driverGuard, controller.listMyCompletedRoutes);
 router.get('/', scheduleViewerGuard, controller.list);
 router.post('/', managerGuard, controller.create);
 router.get('/:id/tracking', scheduleViewerGuard, controller.getTracking);

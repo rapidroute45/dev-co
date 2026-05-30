@@ -9,6 +9,7 @@ import { DeclineRouteUseCase } from '../../application/use-cases/declineRoute.us
 import { ListPendingRouteOffersUseCase } from '../../application/use-cases/listPendingRouteOffers.use-case';
 import { ListRoutesUseCase } from '../../application/use-cases/listRoutes.use-case';
 import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.use-case';
+import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 
@@ -23,6 +24,7 @@ export class RouteController {
     private listPendingRouteOffersUseCase: ListPendingRouteOffersUseCase,
     private listRoutesUseCase: ListRoutesUseCase,
     private listMyRoutesUseCase: ListMyRoutesUseCase,
+    private listMyCompletedRoutesUseCase: ListMyCompletedRoutesUseCase,
     private startRouteUseCase: StartRouteUseCase,
     private routeDeliveryUseCase: RouteDeliveryUseCase
   ) {}
@@ -72,6 +74,23 @@ export class RouteController {
         data: result.items,
         count: result.count,
         date: result.date,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  listMyCompletedRoutes = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const result = await this.listMyCompletedRoutesUseCase.execute(
+        req.user.id,
+        req.query as Record<string, string>
+      );
+      res.status(200).json({
+        success: true,
+        data: result.items,
+        count: result.count,
       });
     } catch (error) {
       next(error);
