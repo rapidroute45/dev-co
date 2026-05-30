@@ -90,6 +90,8 @@ export function mapRouteToResponse(
     deliveryVerification: route.deliveryVerification,
     assignedBy: route.assignedBy,
     notes: route.notes,
+    startedAt: route.startedAt,
+    completedAt: route.completedAt,
     createdAt: route.createdAt,
     updatedAt: route.updatedAt,
   };
