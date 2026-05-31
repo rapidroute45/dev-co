@@ -53,8 +53,19 @@ export class GeneratePayrollBillUseCase {
       periodStart,
       periodEnd
     );
-    if (existing && existing.status === PayrollStatus.APPROVED) {
-      throw new AppError('This period has already been approved and is locked.', 409);
+    if (existing) {
+      const statusLabel =
+        existing.status === PayrollStatus.APPROVED
+          ? 'approved'
+          : existing.status === PayrollStatus.SUBMITTED
+            ? 'submitted'
+            : existing.status === PayrollStatus.REJECTED
+              ? 'sent back'
+              : 'draft';
+      throw new AppError(
+        `A payroll bill for this week already exists (${statusLabel}). Open it from the list instead of creating a new one.`,
+        409
+      );
     }
 
     const routes = await this.routeRepo.findCompletedByTeamInRange(
@@ -63,7 +74,7 @@ export class GeneratePayrollBillUseCase {
       periodEnd
     );
 
-    if (routes.length === 0 && !existing) {
+    if (routes.length === 0) {
       throw new AppError('No completed routes for this team in the selected period.', 400);
     }
 
@@ -73,12 +84,6 @@ export class GeneratePayrollBillUseCase {
       if (m.id) nameById.set(m.id, m.fullName?.trim() || m.email);
     });
 
-    // Preserve any bonus/deduction the team lead already entered.
-    const prevByDriver = new Map<string, { bonus: number; deduction: number }>();
-    existing?.lineItems.forEach((line) => {
-      prevByDriver.set(line.driverId, { bonus: line.bonus, deduction: line.deduction });
-    });
-
     const grouped = new Map<string, PayrollDriverLine>();
     for (const route of routes) {
       const driverId = route.driverId;
@@ -86,14 +91,13 @@ export class GeneratePayrollBillUseCase {
 
       let line = grouped.get(driverId);
       if (!line) {
-        const prev = prevByDriver.get(driverId);
         line = {
           driverId,
           driverName: nameById.get(driverId) ?? 'Driver',
           routeCount: 0,
           basePay: 0,
-          bonus: prev?.bonus ?? 0,
-          deduction: prev?.deduction ?? 0,
+          bonus: 0,
+          deduction: 0,
           total: 0,
           routes: [],
         };
@@ -117,17 +121,6 @@ export class GeneratePayrollBillUseCase {
       total: line.basePay + line.bonus - line.deduction,
     }));
     const totalAmount = lineItems.reduce((sum, line) => sum + line.total, 0);
-
-    if (existing?.id) {
-      const updated = await this.payrollRepo.update(existing.id, {
-        lineItems,
-        totalAmount,
-        status: PayrollStatus.DRAFT,
-        rejectionReason: null,
-      });
-      if (!updated) throw new AppError('Failed to update payroll bill.', 500);
-      return updated;
-    }
 
     const bill = new PayrollBill({
       teamId: actor.teamId,

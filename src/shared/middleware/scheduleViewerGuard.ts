@@ -8,6 +8,7 @@ export const scheduleViewerGuard = [
   requireRoles(
     UserRole.ADMIN,
     UserRole.DISPATCH_MANAGER,
+    UserRole.ACCOUNTANT,
     UserRole.TEAM_LEAD,
     UserRole.DRIVER,
     UserRole.TEAM_DRIVER

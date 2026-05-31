@@ -51,7 +51,7 @@ const payrollReviewGuard = [
 router.get('/bills', payrollViewerGuard, controller.list);
 router.get('/bills/:id', payrollViewerGuard, controller.getById);
 router.post('/bills/generate', teamLeadGuard, controller.generate);
-router.patch('/bills/:id/line-items', teamLeadGuard, controller.updateLineItems);
+router.patch('/bills/:id/line-items', payrollReviewGuard, controller.updateLineItems);
 router.post('/bills/:id/submit', teamLeadGuard, controller.submit);
 router.post('/bills/:id/approve', payrollReviewGuard, controller.approve);
 router.post('/bills/:id/reject', payrollReviewGuard, controller.reject);

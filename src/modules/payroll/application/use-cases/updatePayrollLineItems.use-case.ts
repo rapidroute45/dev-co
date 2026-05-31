@@ -8,7 +8,6 @@ import { IPayrollRepository } from '../../domain/interfaces/payroll-repository.i
 
 interface Actor {
   role: UserRole | null;
-  teamId?: string | null;
 }
 
 export interface LineAdjustment {
@@ -21,6 +20,12 @@ export interface UpdateLineItemsInput {
   adjustments: LineAdjustment[];
   note?: string;
 }
+
+const DISPATCH_ROLES = [
+  UserRole.ADMIN,
+  UserRole.DISPATCH_MANAGER,
+  UserRole.ACCOUNTANT,
+];
 
 function sanitize(value: number | undefined, fallback: number): number {
   if (value === undefined || value === null) return fallback;
@@ -37,17 +42,14 @@ export class UpdatePayrollLineItemsUseCase {
     billId: string,
     input: UpdateLineItemsInput
   ): Promise<PayrollBill> {
-    if (actor.role !== UserRole.TEAM_LEAD) {
-      throw new AppError('Only team leads can edit payroll bills.', 403);
+    if (!actor.role || !DISPATCH_ROLES.includes(actor.role)) {
+      throw new AppError('Only dispatch staff can set bonus and deductions.', 403);
     }
 
     const bill = await this.payrollRepo.findById(billId);
     if (!bill) throw new AppError('Payroll bill not found.', 404);
-    if (!actor.teamId || bill.teamId !== actor.teamId) {
-      throw new AppError('You can only edit your own team payroll.', 403);
-    }
-    if (bill.status !== PayrollStatus.DRAFT && bill.status !== PayrollStatus.REJECTED) {
-      throw new AppError('Only draft bills can be edited.', 409);
+    if (bill.status !== PayrollStatus.SUBMITTED) {
+      throw new AppError('Bonus and deductions can only be edited on submitted bills.', 409);
     }
 
     const adjByDriver = new Map<string, LineAdjustment>();

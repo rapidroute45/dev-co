@@ -79,7 +79,7 @@ export class PayrollController {
         note?: string;
       };
       const bill = await this.updateLineItemsUseCase.execute(
-        { role: req.user.role, teamId: req.user.teamId },
+        { role: req.user.role },
         String(req.params.id),
         { adjustments: adjustments ?? [], note }
       );
