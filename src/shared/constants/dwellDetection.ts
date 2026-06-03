@@ -2,8 +2,14 @@
 export const DWELL_RADIUS_METERS = 75;
 
 /**
- * Minutes stationary before in-app dwell notification.
- * Testing: 2. Production: set DWELL_THRESHOLD_MINUTES=20 in .env (or change default below).
+ * Expected mobile ping interval (documentation; enforced in DispatchMobile).
+ * Driver POSTs location every 30s while route is in_progress.
+ */
+export const LOCATION_PING_INTERVAL_SECONDS = 30;
+
+/**
+ * Minutes at the same location before in-app dwell notification to admin/ops.
+ * Default 2 minutes. Production: set DWELL_THRESHOLD_MINUTES=20 in .env.
  */
 export const DWELL_THRESHOLD_MINUTES =
   process.env.DWELL_THRESHOLD_MINUTES != null &&

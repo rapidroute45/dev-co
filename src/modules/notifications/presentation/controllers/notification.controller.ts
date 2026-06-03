@@ -9,6 +9,12 @@ export class NotificationController {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
       const data = await this.listNotificationsUseCase.execute(req.user.id);
+      console.log('[notifications-list]', {
+        recipientId: req.user.id,
+        role: req.user.role,
+        count: data.length,
+        dwellCount: data.filter((n) => n.type === 'driver_dwelling').length,
+      });
       res.status(200).json({ success: true, data, count: data.length });
     } catch (error) {
       next(error);

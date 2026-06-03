@@ -72,6 +72,15 @@ export class RouteDeliveryUseCase {
       recordedAt,
     });
 
+    console.log('[location-ping]', {
+      routeId,
+      driverId,
+      lat,
+      lng,
+      recordedAt: recordedAt.toISOString(),
+      dwell,
+    });
+
     return {
       lat,
       lng,

@@ -70,6 +70,15 @@ export class UserRepository implements IUserRepository {
     return docs.map(mapDoc);
   }
 
+  async findActiveByRoles(roles: UserRole[]): Promise<User[]> {
+    if (roles.length === 0) return [];
+    const docs = await UserModel.find({
+      status: UserStatus.ACTIVE,
+      role: { $in: roles },
+    }).sort({ fullName: 1, email: 1 });
+    return docs.map(mapDoc);
+  }
+
   async findActiveDrivers(): Promise<User[]> {
     const docs = await UserModel.find({
       status: UserStatus.ACTIVE,

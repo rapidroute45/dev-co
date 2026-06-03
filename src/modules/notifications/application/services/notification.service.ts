@@ -64,8 +64,8 @@ export class NotificationService {
   }
 
   /**
-   * In-app alerts for ops when a driver is stationary 20+ minutes (push in a later phase).
-   * One Notification document per recipient (team lead, dispatch managers, admins).
+   * In-app alerts for ops when a driver is stationary past the dwell threshold.
+   * One Notification document per recipient (dispatch managers, admins, team lead).
    */
   async notifyDriverDwelling(input: {
     recipientIds: string[];
@@ -98,7 +98,21 @@ export class NotificationService {
         input.recipientIds.filter((id) => id && id !== input.driverId)
       ),
     ];
-    if (recipients.length === 0) return [];
+    if (recipients.length === 0) {
+      console.warn('[dwell-notify] No recipients after filter (driver excluded?)', {
+        routeId: input.routeId,
+        driverId: input.driverId,
+        inputRecipientIds: input.recipientIds,
+      });
+      return [];
+    }
+
+    console.log('[dwell-notify] Creating in-app notifications', {
+      routeId: input.routeId,
+      driverName: input.driverName,
+      dwellMinutes: input.dwellMinutes,
+      recipients,
+    });
 
     const saved = await Promise.all(
       recipients.map((recipientId) =>
@@ -117,6 +131,17 @@ export class NotificationService {
     );
 
     void this.sendPushIfSupported(recipients, title, message, payload);
+
+    console.log('[dwell-notify] Notifications saved', {
+      routeId: input.routeId,
+      count: saved.length,
+      notifications: saved.map((n) => ({
+        id: n.id,
+        recipientId: n.recipientId,
+        type: n.type,
+        title: n.title,
+      })),
+    });
 
     return saved;
   }

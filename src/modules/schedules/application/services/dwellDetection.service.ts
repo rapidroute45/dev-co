@@ -1,8 +1,10 @@
 import { RouteDwellStatus } from '../../../../shared/constants/routeDwellStatuses';
 import {
   DWELL_RADIUS_METERS,
+  DWELL_THRESHOLD_MINUTES,
+  DWELL_THRESHOLD_MS,
 } from '../../../../shared/constants/dwellDetection';
-import { UserRole, UserStatus } from '../../../../shared/constants/roles';
+import { UserRole } from '../../../../shared/constants/roles';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { NotificationService } from '../../../notifications/application/services/notification.service';
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
@@ -44,7 +46,15 @@ export class DwellDetectionService {
         lng,
         recordedAt,
       });
-      return this.toResult(session, recordedAt);
+      const result = this.toResult(session, recordedAt);
+      console.log('[dwell-eval]', {
+        routeId,
+        event: 'session_started',
+        lat,
+        lng,
+        ...result,
+      });
+      return result;
     }
 
     const distanceM = haversineMeters(session.centerLat, session.centerLng, lat, lng);
@@ -57,18 +67,47 @@ export class DwellDetectionService {
         })) ?? session;
 
       const dwellMs = recordedAt.getTime() - session.startedAt.getTime();
-      const thresholdMs = (session.thresholdMinutes ?? 20) * 60 * 1000;
+      // Always use live config — old sessions may have thresholdMinutes: 20 stored in Mongo.
+      const thresholdMs = DWELL_THRESHOLD_MS;
 
-      if (dwellMs >= thresholdMs && !session.alertSentAt) {
-        const notificationId = await this.sendDwellAlert(session, dwellMs, recordedAt);
-        session =
-          (await this.dwellSessionRepo.updateById(session.id, {
-            alertSentAt: recordedAt,
-            alertNotificationId: notificationId,
-          })) ?? session;
+      if (dwellMs >= thresholdMs && session.alertSentAt) {
+        console.log('[dwell-eval]', {
+          routeId,
+          event: 'threshold_met_but_alert_already_sent',
+          dwellMs,
+          alertSentAt: session.alertSentAt,
+        });
       }
 
-      return this.toResult(session, recordedAt);
+      if (dwellMs >= thresholdMs && !session.alertSentAt) {
+        const alertResult = await this.sendDwellAlert(session, dwellMs, recordedAt);
+        if (alertResult.notificationIds.length > 0) {
+          session =
+            (await this.dwellSessionRepo.updateById(session.id, {
+              alertSentAt: recordedAt,
+              alertNotificationId: alertResult.notificationIds[0] ?? null,
+            })) ?? session;
+          console.info(
+            `[dwell] Alert sent route=${session.routeId} recipients=${alertResult.recipientIds.length} minutes~${Math.floor(dwellMs / 60_000)} thresholdMin=${DWELL_THRESHOLD_MINUTES}`
+          );
+        } else {
+          console.warn(
+            `[dwell] Threshold reached but no notifications created route=${session.routeId} — check dispatch manager/admin users are active in DB`
+          );
+        }
+      }
+
+      const result = this.toResult(session, recordedAt);
+      console.log('[dwell-eval]', {
+        routeId,
+        event: session.alertSentAt ? 'still_within_radius_alert_sent' : 'within_radius',
+        distanceM: Math.round(distanceM),
+        radiusM: radius,
+        dwellMs,
+        thresholdMin: DWELL_THRESHOLD_MINUTES,
+        ...result,
+      });
+      return result;
     }
 
     await this.dwellSessionRepo.updateById(session.id, {
@@ -84,7 +123,15 @@ export class DwellDetectionService {
       lng,
       recordedAt,
     });
-    return this.toResult(next, recordedAt);
+    const result = this.toResult(next, recordedAt);
+    console.log('[dwell-eval]', {
+      routeId,
+      event: 'moved_outside_radius_new_session',
+      distanceM: Math.round(distanceM),
+      radiusM: radius,
+      ...result,
+    });
+    return result;
   }
 
   async resolveActiveSessions(routeId: string): Promise<void> {
@@ -123,14 +170,25 @@ export class DwellDetectionService {
     },
     dwellMs: number,
     _recordedAt: Date
-  ): Promise<string | null> {
+  ): Promise<{ notificationIds: string[]; recipientIds: string[] }> {
     const recipientIds = await this.resolveDwellAlertRecipients(session.teamLeadId);
-    if (recipientIds.length === 0) return null;
+    console.log('[dwell-notify]', {
+      routeId: session.routeId,
+      dwellSessionId: session.id,
+      recipientCount: recipientIds.length,
+      recipientIds,
+    });
+    if (recipientIds.length === 0) {
+      return { notificationIds: [], recipientIds: [] };
+    }
 
     const driver = await this.userRepo.findById(session.driverId);
     const driverName =
       driver?.fullName?.trim() || driver?.email?.split('@')[0] || 'Driver';
-    const dwellMinutes = Math.floor(dwellMs / 60_000);
+    const dwellMinutes = Math.max(
+      DWELL_THRESHOLD_MINUTES,
+      Math.floor(dwellMs / 60_000)
+    );
 
     const notifications = await this.notificationService.notifyDriverDwelling({
       recipientIds,
@@ -144,33 +202,39 @@ export class DwellDetectionService {
       startedAt: session.startedAt.toISOString(),
     });
 
-    return notifications[0]?.id ?? null;
+    return {
+      notificationIds: notifications.map((n) => n.id).filter((id): id is string => Boolean(id)),
+      recipientIds,
+    };
   }
 
-  /** Team lead for the route's team + all active dispatch managers (+ admins). */
+  /** All active admins (+ dispatch managers, optional team lead) for dwell alerts. */
   private async resolveDwellAlertRecipients(
     teamLeadId: string | null
   ): Promise<string[]> {
     const ids = new Set<string>();
-    if (teamLeadId) ids.add(teamLeadId);
 
-    const [managers, admins] = await Promise.all([
-      this.userRepo.findMany({
-        role: UserRole.DISPATCH_MANAGER,
-        status: UserStatus.ACTIVE,
-      }),
-      this.userRepo.findMany({
-        role: UserRole.ADMIN,
-        status: UserStatus.ACTIVE,
-      }),
+    const opsUsers = await this.userRepo.findActiveByRoles([
+      UserRole.ADMIN,
+      UserRole.DISPATCH_MANAGER,
     ]);
 
-    for (const u of managers) {
-      if (u.id) ids.add(u.id);
+    let managerCount = 0;
+    let adminCount = 0;
+    for (const u of opsUsers) {
+      if (!u.id) continue;
+      ids.add(u.id);
+      if (u.role === UserRole.DISPATCH_MANAGER) managerCount += 1;
+      if (u.role === UserRole.ADMIN) adminCount += 1;
     }
-    for (const u of admins) {
-      if (u.id) ids.add(u.id);
+
+    if (adminCount === 0) {
+      console.warn(
+        '[dwell] No active admin user in DB — create a user with role "admin" and status "active"'
+      );
     }
+
+    if (teamLeadId) ids.add(teamLeadId);
 
     return [...ids];
   }

@@ -1,9 +1,22 @@
+import mongoose from 'mongoose';
 import {
   Notification,
   NotificationType,
 } from '../../domain/entities/notification.entity';
 import { INotificationRepository } from '../../domain/interfaces/notification-repository.interface';
 import { NotificationModel } from '../models/notification.model';
+
+function toRecipientObjectId(recipientId: string): mongoose.Types.ObjectId | null {
+  if (!mongoose.Types.ObjectId.isValid(recipientId)) return null;
+  return new mongoose.Types.ObjectId(recipientId);
+}
+
+/** Match recipient whether stored as ObjectId or legacy string in Mongo. */
+function recipientQuery(recipientId: string) {
+  const oid = toRecipientObjectId(recipientId);
+  if (!oid) return { recipientId };
+  return { $or: [{ recipientId: oid }, { recipientId: recipientId }] };
+}
 
 function mapDoc(doc: {
   _id: { toString(): string };
@@ -33,8 +46,10 @@ function mapDoc(doc: {
 
 export class NotificationRepository implements INotificationRepository {
   async save(notification: Notification): Promise<Notification> {
+    const recipientOid =
+      toRecipientObjectId(notification.recipientId) ?? notification.recipientId;
     const created = await NotificationModel.create({
-      recipientId: notification.recipientId,
+      recipientId: recipientOid,
       type: notification.type,
       title: notification.title,
       message: notification.message,
@@ -46,7 +61,7 @@ export class NotificationRepository implements INotificationRepository {
   }
 
   async findManyByRecipient(recipientId: string, limit = 50): Promise<Notification[]> {
-    const docs = await NotificationModel.find({ recipientId })
+    const docs = await NotificationModel.find(recipientQuery(recipientId))
       .sort({ createdAt: -1 })
       .limit(limit);
     return docs.map(mapDoc);
@@ -54,7 +69,7 @@ export class NotificationRepository implements INotificationRepository {
 
   async markRead(id: string, recipientId: string): Promise<Notification | null> {
     const doc = await NotificationModel.findOneAndUpdate(
-      { _id: id, recipientId },
+      { _id: id, ...recipientQuery(recipientId) },
       { read: true },
       { returnDocument: 'after' }
     );

@@ -30,6 +30,8 @@ export interface IUserRepository {
   findByEmail(email: string): Promise<User | null>;
   findById(id: string): Promise<User | null>;
   findMany(filters?: UserListFilters): Promise<User[]>;
+  /** Active users whose role is in `roles` (e.g. dispatch manager + admin for dwell alerts). */
+  findActiveByRoles(roles: UserRole[]): Promise<User[]>;
   findActiveDrivers(): Promise<User[]>;
   findManyByStatus(status: UserStatus): Promise<User[]>;
   findManyByTeamId(teamId: string): Promise<User[]>;
