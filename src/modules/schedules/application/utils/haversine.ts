@@ -15,6 +15,18 @@ export function haversineMiles(
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+const MILES_TO_METERS = 1609.344;
+
+/** Distance in meters between two WGS84 points. */
+export function haversineMeters(
+  lat1: number,
+  lng1: number,
+  lat2: number,
+  lng2: number
+): number {
+  return haversineMiles(lat1, lng1, lat2, lng2) * MILES_TO_METERS;
+}
+
 export function sumLocationPathMiles(
   points: { lat: number; lng: number }[]
 ): number {

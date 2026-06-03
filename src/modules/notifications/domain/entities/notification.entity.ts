@@ -5,6 +5,7 @@ export enum NotificationType {
   DOCUMENT_UPDATED = 'document_updated',
   DOCUMENT_VERIFIED = 'document_verified',
   DOCUMENT_REJECTED = 'document_rejected',
+  DRIVER_DWELLING = 'driver_dwelling',
 }
 
 export interface NotificationProps {

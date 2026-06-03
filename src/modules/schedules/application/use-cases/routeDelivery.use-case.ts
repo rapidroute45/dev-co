@@ -13,6 +13,7 @@ import { DriverLocationRepository } from '../../infrastructure/repositories/driv
 import { sumLocationPathMiles } from '../utils/haversine';
 import { mapStopsToResponse } from '../utils/routeStops';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
+import { DwellDetectionService } from '../services/dwellDetection.service';
 import { ChatService } from '../../../chat/application/services/chat.service';
 
 export class RouteDeliveryUseCase {
@@ -22,6 +23,7 @@ export class RouteDeliveryUseCase {
     private driverLocationRepo: DriverLocationRepository,
     private addressCodeRepo: AddressAccessCodeRepository,
     private routeStopEnrichment: RouteStopEnrichmentService,
+    private dwellDetection: DwellDetectionService,
     private chatService?: ChatService
   ) {}
 
@@ -54,13 +56,28 @@ export class RouteDeliveryUseCase {
     }
 
     await this.driverLocationRepo.savePoint({ routeId, driverId, lat, lng });
+    const recordedAt = new Date();
     await this.routeRepo.update(routeId, {
       driverLat: lat,
       driverLng: lng,
-      driverLocationAt: new Date(),
+      driverLocationAt: recordedAt,
     });
 
-    return { lat, lng, recordedAt: new Date().toISOString() };
+    const dwell = await this.dwellDetection.evaluateLocationPing({
+      routeId,
+      driverId,
+      teamId: route.teamId,
+      lat,
+      lng,
+      recordedAt,
+    });
+
+    return {
+      lat,
+      lng,
+      recordedAt: recordedAt.toISOString(),
+      dwell,
+    };
   }
 
   async completeStop(
@@ -199,6 +216,8 @@ export class RouteDeliveryUseCase {
       completedAt: new Date(),
     });
     if (!updated) throw new AppError('Failed to complete route.', 500);
+
+    await this.dwellDetection.resolveActiveSessions(routeId);
 
     return this.routeStopEnrichment.enrichRoute(updated);
   }

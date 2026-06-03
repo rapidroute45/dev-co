@@ -15,8 +15,10 @@ import { RouteStopRepository } from '../../infrastructure/repositories/routeStop
 import { RouteStopEnrichmentService } from '../../application/services/routeStopEnrichment.service';
 import { AddressAccessCodeRepository } from '../../infrastructure/repositories/addressAccessCode.repository';
 import { DriverLocationRepository } from '../../infrastructure/repositories/driverLocation.repository';
+import { RouteDwellSessionRepository } from '../../infrastructure/repositories/routeDwellSession.repository';
 import { RouteValidationService } from '../../application/services/routeValidation.service';
 import { ScheduleActivationService } from '../../application/services/scheduleActivation.service';
+import { DwellDetectionService } from '../../application/services/dwellDetection.service';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 import { CreateRouteUseCase } from '../../application/use-cases/createRoute.use-case';
 import { GetRouteUseCase } from '../../application/use-cases/getRoute.use-case';
@@ -40,10 +42,18 @@ const routeStopRepo = new RouteStopRepository();
 const routeStopEnrichment = new RouteStopEnrichmentService(routeStopRepo);
 const addressCodeRepo = new AddressAccessCodeRepository();
 const driverLocationRepo = new DriverLocationRepository();
+const routeDwellSessionRepo = new RouteDwellSessionRepository();
 const storeRepo = new StoreRepository();
 const userRepo = new UserRepository();
 const teamRepo = new TeamRepository();
-const notificationService = new NotificationService(new NotificationRepository());
+const notificationRepo = new NotificationRepository();
+const notificationService = new NotificationService(notificationRepo);
+const dwellDetection = new DwellDetectionService(
+  routeDwellSessionRepo,
+  teamRepo,
+  userRepo,
+  notificationService
+);
 
 const routeValidation = new RouteValidationService(
   scheduleRepo,
@@ -58,6 +68,7 @@ const routeDelivery = new RouteDeliveryUseCase(
   driverLocationRepo,
   addressCodeRepo,
   routeStopEnrichment,
+  dwellDetection,
   chatService
 );
 

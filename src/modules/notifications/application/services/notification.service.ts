@@ -63,6 +63,64 @@ export class NotificationService {
     void this.sendPushIfSupported([...recipients], title, message, payload);
   }
 
+  /**
+   * In-app alerts for ops when a driver is stationary 20+ minutes (push in a later phase).
+   * One Notification document per recipient (team lead, dispatch managers, admins).
+   */
+  async notifyDriverDwelling(input: {
+    recipientIds: string[];
+    routeId: string;
+    driverId: string;
+    driverName: string;
+    dwellSessionId: string;
+    centerLat: number;
+    centerLng: number;
+    dwellMinutes: number;
+    startedAt: string;
+  }): Promise<Notification[]> {
+    const payload = {
+      routeId: input.routeId,
+      driverId: input.driverId,
+      driverName: input.driverName,
+      dwellSessionId: input.dwellSessionId,
+      centerLat: input.centerLat,
+      centerLng: input.centerLng,
+      dwellMinutes: input.dwellMinutes,
+      startedAt: input.startedAt,
+      deepLink: `/routes/tracking/${input.routeId}`,
+    };
+
+    const title = 'Driver stationary on route';
+    const message = `${input.driverName} has been at the same location for ${input.dwellMinutes}+ minutes.`;
+
+    const recipients = [
+      ...new Set(
+        input.recipientIds.filter((id) => id && id !== input.driverId)
+      ),
+    ];
+    if (recipients.length === 0) return [];
+
+    const saved = await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.DRIVER_DWELLING,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(recipients, title, message, payload);
+
+    return saved;
+  }
+
   private async sendPushIfSupported(
     _recipientIds: string[],
     _title: string,
