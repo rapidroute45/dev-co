@@ -16,6 +16,7 @@ export type RouteStopRecord = {
   completedAt: Date | null;
   lat: number | null;
   lng: number | null;
+  proximityEnteredAt: Date | null;
 };
 
 export type RouteStopInput = {
@@ -50,6 +51,7 @@ export interface IRouteStopRepository {
         | 'completedAt'
         | 'lat'
         | 'lng'
+        | 'proximityEnteredAt'
       >
     >
   ): Promise<RouteStopRecord | null>;

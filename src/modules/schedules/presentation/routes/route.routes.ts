@@ -3,7 +3,6 @@ import { managerGuard } from '../../../../shared/middleware/managerGuard';
 import { scheduleViewerGuard } from '../../../../shared/middleware/scheduleViewerGuard';
 import { driverGuard } from '../../../../shared/middleware/driverGuard';
 import { teamLeadGuard } from '../../../../shared/middleware/teamLeadGuard';
-import { uploadMiddleware } from '../../../../shared/upload/upload.config';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { TeamRepository } from '../../../teams/infrastructure/repositories/team.repository';
 import { StoreRepository } from '../../../stores/infrastructure/repositories/store.repository';
@@ -19,6 +18,7 @@ import { RouteDwellSessionRepository } from '../../infrastructure/repositories/r
 import { RouteValidationService } from '../../application/services/routeValidation.service';
 import { ScheduleActivationService } from '../../application/services/scheduleActivation.service';
 import { DwellDetectionService } from '../../application/services/dwellDetection.service';
+import { StopProximityService } from '../../application/services/stopProximity.service';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 import { CreateRouteUseCase } from '../../application/use-cases/createRoute.use-case';
 import { GetRouteUseCase } from '../../application/use-cases/getRoute.use-case';
@@ -32,8 +32,6 @@ import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.us
 import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { RouteController } from '../controllers/route.controller';
-import { chatService } from '../../../chat/presentation/routes/chat.routes';
-
 const router = Router();
 
 const scheduleRepo = new ScheduleRepository();
@@ -62,6 +60,7 @@ const routeValidation = new RouteValidationService(
   routeRepo
 );
 const scheduleActivation = new ScheduleActivationService(scheduleRepo, routeRepo);
+const stopProximity = new StopProximityService(routeStopRepo);
 const routeDelivery = new RouteDeliveryUseCase(
   routeRepo,
   routeStopRepo,
@@ -69,7 +68,7 @@ const routeDelivery = new RouteDeliveryUseCase(
   addressCodeRepo,
   routeStopEnrichment,
   dwellDetection,
-  chatService
+  stopProximity
 );
 
 const controller = new RouteController(
@@ -147,12 +146,6 @@ router.post('/:id/decline', driverGuard, controller.decline);
 router.post('/:id/start', driverGuard, controller.startRoute);
 router.post('/:id/complete', driverGuard, controller.completeRoute);
 router.post('/:id/location', driverGuard, controller.reportLocation);
-router.post(
-  '/:routeId/stops/:stopId/complete',
-  driverGuard,
-  uploadMiddleware.single('proofPhoto'),
-  controller.completeStop
-);
 router.post('/:routeId/stops/:stopId/return', driverGuard, controller.returnStop);
 router.put('/:routeId/stops/:stopId/access-code', managerGuard, controller.setAccessCode);
 router.delete('/:id', managerGuard, controller.delete);

@@ -22,6 +22,7 @@ function mapDoc(doc: {
   completedAt?: Date | null;
   lat?: number | null;
   lng?: number | null;
+  proximityEnteredAt?: Date | null;
 }): RouteStopRecord {
   return {
     id: doc._id.toString(),
@@ -39,6 +40,7 @@ function mapDoc(doc: {
     completedAt: doc.completedAt ?? null,
     lat: doc.lat ?? null,
     lng: doc.lng ?? null,
+    proximityEnteredAt: doc.proximityEnteredAt ?? null,
   };
 }
 
@@ -99,6 +101,7 @@ export class RouteStopRepository implements IRouteStopRepository {
         | 'completedAt'
         | 'lat'
         | 'lng'
+        | 'proximityEnteredAt'
       >
     >
   ): Promise<RouteStopRecord | null> {

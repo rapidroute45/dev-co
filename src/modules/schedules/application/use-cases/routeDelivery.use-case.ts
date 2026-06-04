@@ -5,7 +5,6 @@ import {
 } from '../../../../shared/constants/routeStopStatuses';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
-import { publicUploadPath } from '../../../../shared/upload/upload.config';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { AddressAccessCodeRepository } from '../../infrastructure/repositories/addressAccessCode.repository';
@@ -14,7 +13,7 @@ import { sumLocationPathMiles } from '../utils/haversine';
 import { mapStopsToResponse } from '../utils/routeStops';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 import { DwellDetectionService } from '../services/dwellDetection.service';
-import { ChatService } from '../../../chat/application/services/chat.service';
+import { StopProximityService } from '../services/stopProximity.service';
 
 export class RouteDeliveryUseCase {
   constructor(
@@ -24,7 +23,7 @@ export class RouteDeliveryUseCase {
     private addressCodeRepo: AddressAccessCodeRepository,
     private routeStopEnrichment: RouteStopEnrichmentService,
     private dwellDetection: DwellDetectionService,
-    private chatService?: ChatService
+    private stopProximity: StopProximityService
   ) {}
 
   private async assertDriverRoute(routeId: string, driverId: string) {
@@ -72,6 +71,13 @@ export class RouteDeliveryUseCase {
       recordedAt,
     });
 
+    const autoCompletedStops = await this.stopProximity.evaluateDriverAtStops({
+      routeId,
+      lat,
+      lng,
+      recordedAt,
+    });
+
     console.log('[location-ping]', {
       routeId,
       driverId,
@@ -79,6 +85,7 @@ export class RouteDeliveryUseCase {
       lng,
       recordedAt: recordedAt.toISOString(),
       dwell,
+      autoCompletedStops,
     });
 
     return {
@@ -86,55 +93,8 @@ export class RouteDeliveryUseCase {
       lng,
       recordedAt: recordedAt.toISOString(),
       dwell,
+      autoCompletedStops,
     };
-  }
-
-  async completeStop(
-    routeId: string,
-    stopId: string,
-    driverId: string,
-    photoFilename: string,
-    coords?: { lat?: number; lng?: number }
-  ) {
-    const route = await this.assertDriverRoute(routeId, driverId);
-    if (route.status !== RouteStatus.IN_PROGRESS) {
-      throw new AppError('Start the route before completing stops.', 400);
-    }
-
-    const stop = await this.routeStopRepo.findById(stopId);
-    if (!stop || stop.routeId !== routeId) {
-      throw new AppError('Stop not found.', 404);
-    }
-    if (stop.type === 'pickup') {
-      throw new AppError('Use dropoff stops for delivery confirmation.', 400);
-    }
-    if (stop.status !== RouteStopStatus.PENDING) {
-      throw new AppError('Stop already finalized.', 400);
-    }
-
-    const updated = await this.routeStopRepo.updateById(stopId, {
-      status: RouteStopStatus.COMPLETED,
-      deliveryPhotoUrl: publicUploadPath(photoFilename),
-      returnReason: null,
-      returnReasonCustom: null,
-      completedAt: new Date(),
-      lat: coords?.lat ?? null,
-      lng: coords?.lng ?? null,
-    });
-
-    if (updated && this.chatService) {
-      void this.chatService
-        .notifyDeliveryPhoto({
-          routeId,
-          driverId,
-          stopId,
-          stopName: updated.name ?? stop.name,
-          photoUrl: publicUploadPath(photoFilename),
-        })
-        .catch((err) => console.warn('[chat] delivery photo notify failed', err));
-    }
-
-    return updated;
   }
 
   async returnStop(

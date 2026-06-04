@@ -73,6 +73,12 @@ function mapStopItem(s: RouteStopRecord | (RouteStopRecord & { id?: string })) {
     completedAt: s.completedAt,
     lat: s.lat,
     lng: s.lng,
+    proximityEnteredAt:
+      s.proximityEnteredAt instanceof Date
+        ? s.proximityEnteredAt.toISOString()
+        : s.proximityEnteredAt
+          ? String(s.proximityEnteredAt)
+          : null,
   };
 }
 

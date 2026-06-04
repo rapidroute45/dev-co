@@ -241,29 +241,6 @@ export class RouteController {
     }
   };
 
-  completeStop = async (req: Request, res: Response, next: NextFunction) => {
-    try {
-      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
-      const file = req.file;
-      if (!file) return next(new AppError('proofPhoto file is required.', 400));
-
-      const { lat, lng } = req.body as { lat?: string; lng?: string };
-      const data = await this.routeDeliveryUseCase.completeStop(
-        String(req.params.routeId),
-        String(req.params.stopId),
-        req.user.id,
-        file.filename,
-        {
-          lat: lat != null ? Number(lat) : undefined,
-          lng: lng != null ? Number(lng) : undefined,
-        }
-      );
-      res.status(200).json({ success: true, message: 'Stop delivered.', data });
-    } catch (error) {
-      next(error);
-    }
-  };
-
   returnStop = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));

@@ -24,6 +24,8 @@ const RouteStopSchema = new Schema(
     completedAt: { type: Date, default: null },
     lat: { type: Number, default: null },
     lng: { type: Number, default: null },
+    /** When driver first entered STOP_PROXIMITY_RADIUS while stop is pending. */
+    proximityEnteredAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
