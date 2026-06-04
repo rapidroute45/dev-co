@@ -8,7 +8,7 @@ interface Actor {
   teamId?: string | null;
 }
 
-const DISPATCH_ROLES = [
+const OPS_ROLES = [
   UserRole.ADMIN,
   UserRole.DISPATCH_MANAGER,
   UserRole.ACCOUNTANT,
@@ -28,7 +28,7 @@ export class GetPayrollBillUseCase {
       return bill;
     }
 
-    if (actor.role && DISPATCH_ROLES.includes(actor.role)) {
+    if (actor.role && OPS_ROLES.includes(actor.role)) {
       return bill;
     }
 

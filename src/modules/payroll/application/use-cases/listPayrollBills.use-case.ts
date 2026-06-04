@@ -11,7 +11,7 @@ interface Actor {
   teamId?: string | null;
 }
 
-const DISPATCH_ROLES = [
+const OPS_ROLES = [
   UserRole.ADMIN,
   UserRole.DISPATCH_MANAGER,
   UserRole.ACCOUNTANT,
@@ -32,7 +32,7 @@ export class ListPayrollBillsUseCase {
       });
     }
 
-    if (actor.role && DISPATCH_ROLES.includes(actor.role)) {
+    if (actor.role && OPS_ROLES.includes(actor.role)) {
       return this.payrollRepo.findMany({
         teamId: filters.teamId,
         status: filters.status,

@@ -2,13 +2,15 @@ import {
   PayrollBill,
   PayrollDriverLine,
   PayrollRouteLine,
-  PayrollStatus,
+  normalizePayrollStatus,
 } from '../../domain/entities/payrollBill.entity';
+import { OPEN_PAYROLL_STATUSES } from '../../application/utils/payrollOpenStatuses';
 import {
   IPayrollRepository,
   PayrollBillUpdateData,
   PayrollListFilters,
 } from '../../domain/interfaces/payroll-repository.interface';
+import { Types } from 'mongoose';
 import { PayrollBillModel } from '../models/payrollBill.model';
 
 type RouteLineDoc = {
@@ -27,6 +29,7 @@ type DriverLineDoc = {
   basePay: number;
   bonus: number;
   deduction: number;
+  overtime?: number;
   total: number;
   routes?: RouteLineDoc[];
 };
@@ -45,11 +48,13 @@ type BillDoc = {
   note?: string | null;
   createdBy: { toString(): string };
   createdByName?: string | null;
-  submittedAt?: Date | null;
-  reviewedBy?: { toString(): string } | null;
-  reviewedByName?: string | null;
-  reviewedAt?: Date | null;
-  rejectionReason?: string | null;
+  sentToTeamLeadAt?: Date | null;
+  teamLeadNote?: string | null;
+  teamLeadReviewedAt?: Date | null;
+  paymentReceiptUrl?: string | null;
+  paidAt?: Date | null;
+  paidBy?: { toString(): string } | null;
+  paidByName?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 };
@@ -73,6 +78,7 @@ function mapDriverLine(doc: DriverLineDoc): PayrollDriverLine {
     basePay: doc.basePay,
     bonus: doc.bonus,
     deduction: doc.deduction,
+    overtime: doc.overtime ?? 0,
     total: doc.total,
     routes: (doc.routes ?? []).map(mapRouteLine),
   };
@@ -86,18 +92,20 @@ function mapDoc(doc: BillDoc): PayrollBill {
     teamNumber: doc.teamNumber ?? 0,
     periodStart: doc.periodStart,
     periodEnd: doc.periodEnd,
-    status: doc.status as PayrollStatus,
+    status: normalizePayrollStatus(doc.status),
     standardRate: doc.standardRate,
     lineItems: (doc.lineItems ?? []).map(mapDriverLine),
     totalAmount: doc.totalAmount,
     note: doc.note ?? null,
     createdBy: doc.createdBy.toString(),
     createdByName: doc.createdByName ?? '',
-    submittedAt: doc.submittedAt ?? null,
-    reviewedBy: doc.reviewedBy?.toString() ?? null,
-    reviewedByName: doc.reviewedByName ?? null,
-    reviewedAt: doc.reviewedAt ?? null,
-    rejectionReason: doc.rejectionReason ?? null,
+    sentToTeamLeadAt: doc.sentToTeamLeadAt ?? null,
+    teamLeadNote: doc.teamLeadNote ?? null,
+    teamLeadReviewedAt: doc.teamLeadReviewedAt ?? null,
+    paymentReceiptUrl: doc.paymentReceiptUrl ?? null,
+    paidAt: doc.paidAt ?? null,
+    paidBy: doc.paidBy?.toString() ?? null,
+    paidByName: doc.paidByName ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
@@ -120,6 +128,35 @@ export class PayrollBillRepository implements IPayrollRepository {
       periodEnd,
     }).lean<BillDoc>();
     return doc ? mapDoc(doc) : null;
+  }
+
+  async findOpenBillByTeam(teamId: string): Promise<PayrollBill | null> {
+    const doc = await PayrollBillModel.findOne({
+      teamId,
+      status: { $in: OPEN_PAYROLL_STATUSES },
+    })
+      .sort({ createdAt: -1 })
+      .lean<BillDoc>();
+    return doc ? mapDoc(doc) : null;
+  }
+
+  async findBillContainingRoute(routeId: string): Promise<PayrollBill | null> {
+    const routeOid = Types.ObjectId.isValid(routeId) ? new Types.ObjectId(routeId) : routeId;
+    const doc = await PayrollBillModel.findOne({
+      'lineItems.routes.routeId': routeOid,
+    })
+      .sort({ createdAt: -1 })
+      .lean<BillDoc>();
+    return doc ? mapDoc(doc) : null;
+  }
+
+  async collectAllBilledRouteIds(): Promise<string[]> {
+    const docs = await PayrollBillModel.aggregate<{ routeId: string }>([
+      { $unwind: '$lineItems' },
+      { $unwind: '$lineItems.routes' },
+      { $project: { routeId: { $toString: '$lineItems.routes.routeId' } } },
+    ]);
+    return [...new Set(docs.map((d) => d.routeId).filter(Boolean))];
   }
 
   async findMany(filters: PayrollListFilters): Promise<PayrollBill[]> {
@@ -159,11 +196,13 @@ export class PayrollBillRepository implements IPayrollRepository {
     if (data.totalAmount !== undefined) patch.totalAmount = data.totalAmount;
     if (data.status !== undefined) patch.status = data.status;
     if (data.note !== undefined) patch.note = data.note;
-    if (data.submittedAt !== undefined) patch.submittedAt = data.submittedAt;
-    if (data.reviewedBy !== undefined) patch.reviewedBy = data.reviewedBy;
-    if (data.reviewedByName !== undefined) patch.reviewedByName = data.reviewedByName;
-    if (data.reviewedAt !== undefined) patch.reviewedAt = data.reviewedAt;
-    if (data.rejectionReason !== undefined) patch.rejectionReason = data.rejectionReason;
+    if (data.sentToTeamLeadAt !== undefined) patch.sentToTeamLeadAt = data.sentToTeamLeadAt;
+    if (data.teamLeadNote !== undefined) patch.teamLeadNote = data.teamLeadNote;
+    if (data.teamLeadReviewedAt !== undefined) patch.teamLeadReviewedAt = data.teamLeadReviewedAt;
+    if (data.paymentReceiptUrl !== undefined) patch.paymentReceiptUrl = data.paymentReceiptUrl;
+    if (data.paidAt !== undefined) patch.paidAt = data.paidAt;
+    if (data.paidBy !== undefined) patch.paidBy = data.paidBy;
+    if (data.paidByName !== undefined) patch.paidByName = data.paidByName;
 
     const doc = await PayrollBillModel.findByIdAndUpdate(id, patch, {
       returnDocument: 'after',

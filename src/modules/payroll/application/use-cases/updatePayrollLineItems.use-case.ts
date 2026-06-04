@@ -14,6 +14,7 @@ export interface LineAdjustment {
   driverId: string;
   bonus?: number;
   deduction?: number;
+  overtime?: number;
 }
 
 export interface UpdateLineItemsInput {
@@ -21,11 +22,7 @@ export interface UpdateLineItemsInput {
   note?: string;
 }
 
-const DISPATCH_ROLES = [
-  UserRole.ADMIN,
-  UserRole.DISPATCH_MANAGER,
-  UserRole.ACCOUNTANT,
-];
+const OPS_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
 
 function sanitize(value: number | undefined, fallback: number): number {
   if (value === undefined || value === null) return fallback;
@@ -42,14 +39,14 @@ export class UpdatePayrollLineItemsUseCase {
     billId: string,
     input: UpdateLineItemsInput
   ): Promise<PayrollBill> {
-    if (!actor.role || !DISPATCH_ROLES.includes(actor.role)) {
-      throw new AppError('Only dispatch staff can set bonus and deductions.', 403);
+    if (!actor.role || !OPS_ROLES.includes(actor.role)) {
+      throw new AppError('Only admin or dispatch manager can edit payroll.', 403);
     }
 
     const bill = await this.payrollRepo.findById(billId);
     if (!bill) throw new AppError('Payroll bill not found.', 404);
-    if (bill.status !== PayrollStatus.SUBMITTED) {
-      throw new AppError('Bonus and deductions can only be edited on submitted bills.', 409);
+    if (bill.status !== PayrollStatus.DRAFT && bill.status !== PayrollStatus.TEAM_LEAD_DISPUTED) {
+      throw new AppError('Payroll can only be edited while draft or after team lead dispute.', 409);
     }
 
     const adjByDriver = new Map<string, LineAdjustment>();
@@ -59,11 +56,13 @@ export class UpdatePayrollLineItemsUseCase {
       const adj = adjByDriver.get(line.driverId);
       const bonus = sanitize(adj?.bonus, line.bonus);
       const deduction = sanitize(adj?.deduction, line.deduction);
+      const overtime = sanitize(adj?.overtime, line.overtime ?? 0);
       return {
         ...line,
         bonus,
         deduction,
-        total: line.basePay + bonus - deduction,
+        overtime,
+        total: line.basePay + bonus + overtime - deduction,
       };
     });
     const totalAmount = lineItems.reduce((sum, line) => sum + line.total, 0);

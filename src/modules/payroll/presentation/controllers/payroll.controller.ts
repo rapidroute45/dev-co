@@ -1,23 +1,45 @@
 import { Request, Response, NextFunction } from 'express';
 import { AppError } from '../../../../shared/errors/app-error';
 import { PayrollStatus } from '../../domain/entities/payrollBill.entity';
+import { publicUploadPath } from '../../../../shared/upload/upload.config';
 import { mapPayrollBillToResponse } from '../../application/mappers/payrollResponse.mapper';
 import { GeneratePayrollBillUseCase } from '../../application/use-cases/generatePayrollBill.use-case';
 import { ListPayrollBillsUseCase } from '../../application/use-cases/listPayrollBills.use-case';
 import { GetPayrollBillUseCase } from '../../application/use-cases/getPayrollBill.use-case';
 import { UpdatePayrollLineItemsUseCase } from '../../application/use-cases/updatePayrollLineItems.use-case';
-import { SubmitPayrollBillUseCase } from '../../application/use-cases/submitPayrollBill.use-case';
-import { ReviewPayrollBillUseCase } from '../../application/use-cases/reviewPayrollBill.use-case';
+import { SendPayrollToTeamLeadUseCase } from '../../application/use-cases/sendPayrollToTeamLead.use-case';
+import {
+  TeamLeadApprovePayrollUseCase,
+  TeamLeadDisputePayrollUseCase,
+} from '../../application/use-cases/teamLeadReviewPayroll.use-case';
+import { MarkPayrollPaidUseCase } from '../../application/use-cases/markPayrollPaid.use-case';
+import { GetPayrollPendingSummaryUseCase } from '../../application/use-cases/getPayrollPendingSummary.use-case';
 
 export class PayrollController {
   constructor(
     private generateUseCase: GeneratePayrollBillUseCase,
+    private pendingSummaryUseCase: GetPayrollPendingSummaryUseCase,
     private listUseCase: ListPayrollBillsUseCase,
     private getUseCase: GetPayrollBillUseCase,
     private updateLineItemsUseCase: UpdatePayrollLineItemsUseCase,
-    private submitUseCase: SubmitPayrollBillUseCase,
-    private reviewUseCase: ReviewPayrollBillUseCase
+    private sendToTeamLeadUseCase: SendPayrollToTeamLeadUseCase,
+    private teamLeadApproveUseCase: TeamLeadApprovePayrollUseCase,
+    private teamLeadDisputeUseCase: TeamLeadDisputePayrollUseCase,
+    private markPaidUseCase: MarkPayrollPaidUseCase
   ) {}
+
+  pendingSummary = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return next(new AppError('Unauthorized', 401));
+      const summary = await this.pendingSummaryUseCase.execute({
+        role: req.user.role,
+        teamId: req.user.teamId,
+      });
+      res.status(200).json({ success: true, data: summary });
+    } catch (e) {
+      next(e);
+    }
+  };
 
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
@@ -50,20 +72,17 @@ export class PayrollController {
   generate = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user) return next(new AppError('Unauthorized', 401));
-      const { periodStart, periodEnd } = req.body as {
-        periodStart?: string;
-        periodEnd?: string;
-      };
-      if (!periodStart || !periodEnd) {
-        return next(new AppError('periodStart and periodEnd are required.', 400));
+      const { teamId, routeIds } = req.body as { teamId?: string; routeIds?: string[] };
+      if (!teamId) {
+        return next(new AppError('teamId is required.', 400));
       }
       const bill = await this.generateUseCase.execute(
-        { id: req.user.id, role: req.user.role, teamId: req.user.teamId },
-        { periodStart, periodEnd }
+        { id: req.user.id, role: req.user.role },
+        { teamId, routeIds }
       );
       res.status(201).json({
         success: true,
-        message: 'Payroll draft ready.',
+        message: 'Payroll bill created from completed routes.',
         data: mapPayrollBillToResponse(bill),
       });
     } catch (e) {
@@ -93,16 +112,33 @@ export class PayrollController {
     }
   };
 
-  submit = async (req: Request, res: Response, next: NextFunction) => {
+  sendToTeamLead = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user) return next(new AppError('Unauthorized', 401));
-      const bill = await this.submitUseCase.execute(
+      const bill = await this.sendToTeamLeadUseCase.execute(
+        { role: req.user.role },
+        String(req.params.id)
+      );
+      res.status(200).json({
+        success: true,
+        message: 'Payroll sent to team lead for approval.',
+        data: mapPayrollBillToResponse(bill),
+      });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  teamLeadApprove = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return next(new AppError('Unauthorized', 401));
+      const bill = await this.teamLeadApproveUseCase.execute(
         { role: req.user.role, teamId: req.user.teamId },
         String(req.params.id)
       );
       res.status(200).json({
         success: true,
-        message: 'Payroll bill submitted for approval.',
+        message: 'Payroll approved. Dispatch will process payment.',
         data: mapPayrollBillToResponse(bill),
       });
     } catch (e) {
@@ -110,17 +146,18 @@ export class PayrollController {
     }
   };
 
-  approve = async (req: Request, res: Response, next: NextFunction) => {
+  teamLeadDispute = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user) return next(new AppError('Unauthorized', 401));
-      const bill = await this.reviewUseCase.execute(
-        { id: req.user.id, role: req.user.role },
+      const { note } = req.body as { note?: string };
+      const bill = await this.teamLeadDisputeUseCase.execute(
+        { role: req.user.role, teamId: req.user.teamId },
         String(req.params.id),
-        { action: 'approve' }
+        note ?? ''
       );
       res.status(200).json({
         success: true,
-        message: 'Payroll bill approved.',
+        message: 'Issue sent to dispatch.',
         data: mapPayrollBillToResponse(bill),
       });
     } catch (e) {
@@ -128,18 +165,20 @@ export class PayrollController {
     }
   };
 
-  reject = async (req: Request, res: Response, next: NextFunction) => {
+  markPaid = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user) return next(new AppError('Unauthorized', 401));
-      const { reason } = req.body as { reason?: string };
-      const bill = await this.reviewUseCase.execute(
+      const file = req.file;
+      if (!file) return next(new AppError('receipt image is required.', 400));
+      const receiptUrl = publicUploadPath(file.filename);
+      const bill = await this.markPaidUseCase.execute(
         { id: req.user.id, role: req.user.role },
         String(req.params.id),
-        { action: 'reject', reason }
+        receiptUrl
       );
       res.status(200).json({
         success: true,
-        message: 'Payroll bill sent back to the team lead.',
+        message: 'Payment recorded. Receipt is visible to the team lead.',
         data: mapPayrollBillToResponse(bill),
       });
     } catch (e) {

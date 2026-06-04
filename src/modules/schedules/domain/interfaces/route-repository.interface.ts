@@ -48,6 +48,10 @@ export interface IRouteRepository {
   findManyByDriverId(driverId: string, filters?: { fromDate?: Date; toDate?: Date }): Promise<Route[]>;
   findCompletedByDriverId(driverId: string, filters?: { fromDate?: Date; toDate?: Date }): Promise<Route[]>;
   findCompletedByTeamInRange(teamId: string, fromDate: Date, toDate: Date): Promise<Route[]>;
+  findCompletedByTeamExcludingRouteIds(
+    teamId: string,
+    excludeRouteIds: string[]
+  ): Promise<Route[]>;
   findOverlappingForDriver(params: {
     driverId: string;
     scheduleDate: Date;

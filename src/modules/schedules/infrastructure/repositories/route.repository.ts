@@ -197,6 +197,22 @@ export class RouteRepository implements IRouteRepository {
     return docs.map(mapDoc);
   }
 
+  async findCompletedByTeamExcludingRouteIds(
+    teamId: string,
+    excludeRouteIds: string[]
+  ): Promise<Route[]> {
+    const query: Record<string, unknown> = {
+      teamId,
+      status: RouteStatus.COMPLETED,
+      driverId: { $ne: null },
+    };
+    if (excludeRouteIds.length > 0) {
+      query._id = { $nin: excludeRouteIds };
+    }
+    const docs = await RouteModel.find(query).sort({ scheduleDate: 1, arrivalMinutes: 1 });
+    return docs.map(mapDoc);
+  }
+
   async findOverlappingForDriver(params: {
     driverId: string;
     scheduleDate: Date;

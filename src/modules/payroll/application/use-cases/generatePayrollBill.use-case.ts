@@ -1,26 +1,32 @@
 import { AppError } from '../../../../shared/errors/app-error';
 import { UserRole } from '../../../../shared/constants/roles';
+import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { IRouteRepository } from '../../../schedules/domain/interfaces/route-repository.interface';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
-import { parseScheduleDate } from '../../../schedules/application/utils/scheduleDate';
 import {
   PayrollBill,
-  PayrollDriverLine,
   PayrollStatus,
 } from '../../domain/entities/payrollBill.entity';
 import { IPayrollRepository } from '../../domain/interfaces/payroll-repository.interface';
 import { STANDARD_ROUTE_RATE } from '../payroll.constants';
+import { buildPayrollLineItems } from '../utils/buildPayrollLineItems';
+import {
+  loadUnbilledCompletedRoutesForTeam,
+  periodBoundsFromRoutes,
+} from '../utils/unbilledPayrollRoutes';
+
+const OPS_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
 
 interface Actor {
   id: string;
   role: UserRole | null;
-  teamId?: string | null;
 }
 
 export interface GeneratePayrollInput {
-  periodStart: string;
-  periodEnd: string;
+  teamId: string;
+  /** When set, bill only these completed unbilled routes (e.g. one route = $100). */
+  routeIds?: string[];
 }
 
 export class GeneratePayrollBillUseCase {
@@ -32,98 +38,92 @@ export class GeneratePayrollBillUseCase {
   ) {}
 
   async execute(actor: Actor, input: GeneratePayrollInput): Promise<PayrollBill> {
-    if (actor.role !== UserRole.TEAM_LEAD) {
-      throw new AppError('Only team leads can generate payroll bills.', 403);
-    }
-    if (!actor.teamId) {
-      throw new AppError('You are not assigned to a team.', 400);
+    if (!actor.role || !OPS_ROLES.includes(actor.role)) {
+      throw new AppError('Only admin or dispatch manager can generate payroll bills.', 403);
     }
 
-    const periodStart = parseScheduleDate(input.periodStart);
-    const periodEnd = parseScheduleDate(input.periodEnd);
-    if (periodEnd < periodStart) {
-      throw new AppError('Period end must be on or after the start date.', 400);
-    }
+    const teamId = input.teamId?.trim();
+    if (!teamId) throw new AppError('teamId is required.', 400);
 
-    const team = await this.teamRepo.findById(actor.teamId);
+    const team = await this.teamRepo.findById(teamId);
     if (!team) throw new AppError('Team not found.', 404);
 
-    const existing = await this.payrollRepo.findByTeamAndPeriod(
-      actor.teamId,
-      periodStart,
-      periodEnd
-    );
-    if (existing) {
-      const statusLabel =
-        existing.status === PayrollStatus.APPROVED
-          ? 'approved'
-          : existing.status === PayrollStatus.SUBMITTED
-            ? 'submitted'
-            : existing.status === PayrollStatus.REJECTED
-              ? 'sent back'
-              : 'draft';
-      throw new AppError(
-        `A payroll bill for this week already exists (${statusLabel}). Open it from the list instead of creating a new one.`,
-        409
+    const routeIds = (input.routeIds ?? []).map((id) => id.trim()).filter(Boolean);
+    const isRouteScoped = routeIds.length > 0;
+
+    if (!isRouteScoped) {
+      const openBill = await this.payrollRepo.findOpenBillByTeam(teamId);
+      if (openBill) {
+        throw new AppError(
+          `${team.name} already has an open payroll bill (${openBill.status}). Finish or pay it before creating another.`,
+          409
+        );
+      }
+    }
+
+    let routes;
+    if (isRouteScoped) {
+      const billedIds = new Set(await this.payrollRepo.collectAllBilledRouteIds());
+      routes = [];
+      for (const routeId of routeIds) {
+        if (billedIds.has(routeId)) {
+          const existing = await this.payrollRepo.findBillContainingRoute(routeId);
+          throw new AppError(
+            existing
+              ? `This route is already on payroll bill ${existing.status}.`
+              : 'This route is already billed.',
+            409
+          );
+        }
+        const route = await this.routeRepo.findById(routeId);
+        if (!route) throw new AppError(`Route ${routeId} not found.`, 404);
+        if (route.teamId !== teamId) {
+          throw new AppError('Route does not belong to this team.', 400);
+        }
+        if (route.status !== RouteStatus.COMPLETED) {
+          throw new AppError('Only completed routes can be billed.', 400);
+        }
+        if (!route.driverId) {
+          throw new AppError('Route must have an assigned driver to bill.', 400);
+        }
+        routes.push(route);
+      }
+    } else {
+      routes = await loadUnbilledCompletedRoutesForTeam(
+        this.routeRepo,
+        this.payrollRepo,
+        teamId
       );
     }
 
-    const routes = await this.routeRepo.findCompletedByTeamInRange(
-      actor.teamId,
-      periodStart,
-      periodEnd
-    );
-
     if (routes.length === 0) {
-      throw new AppError('No completed routes for this team in the selected period.', 400);
+      throw new AppError(
+        isRouteScoped
+          ? 'No billable routes in this request.'
+          : 'No unbilled completed routes for this team. Pending balance is $0.',
+        400
+      );
     }
 
-    const members = await this.userRepo.findManyByTeamId(actor.teamId);
+    const members = await this.userRepo.findManyByTeamId(teamId);
     const nameById = new Map<string, string>();
     members.forEach((m) => {
       if (m.id) nameById.set(m.id, m.fullName?.trim() || m.email);
     });
-
-    const grouped = new Map<string, PayrollDriverLine>();
-    for (const route of routes) {
-      const driverId = route.driverId;
-      if (!driverId || !route.id) continue;
-
-      let line = grouped.get(driverId);
-      if (!line) {
-        line = {
-          driverId,
-          driverName: nameById.get(driverId) ?? 'Driver',
-          routeCount: 0,
-          basePay: 0,
-          bonus: 0,
-          deduction: 0,
-          total: 0,
-          routes: [],
-        };
-        grouped.set(driverId, line);
+    if (team.teamLeadId && !nameById.has(team.teamLeadId)) {
+      const lead = await this.userRepo.findById(team.teamLeadId);
+      if (lead?.id) {
+        nameById.set(lead.id, lead.fullName?.trim() || lead.email);
       }
-
-      line.routes.push({
-        routeId: route.id,
-        routeName: route.routeName ?? null,
-        location: route.location ?? null,
-        scheduleDate: route.scheduleDate,
-        completedAt: route.completedAt ?? null,
-        rate: STANDARD_ROUTE_RATE,
-      });
-      line.routeCount += 1;
-      line.basePay += STANDARD_ROUTE_RATE;
     }
 
-    const lineItems = Array.from(grouped.values()).map((line) => ({
-      ...line,
-      total: line.basePay + line.bonus - line.deduction,
-    }));
+    const creator = await this.userRepo.findById(actor.id);
+    const lineItems = buildPayrollLineItems(routes, nameById);
     const totalAmount = lineItems.reduce((sum, line) => sum + line.total, 0);
+    const { periodStart, periodEnd } = periodBoundsFromRoutes(routes);
 
     const bill = new PayrollBill({
-      teamId: actor.teamId,
+      teamId,
       teamName: team.name,
       teamNumber: team.teamNumber,
       periodStart,
@@ -133,7 +133,7 @@ export class GeneratePayrollBillUseCase {
       lineItems,
       totalAmount,
       createdBy: actor.id,
-      createdByName: nameById.get(actor.id) ?? 'Team Lead',
+      createdByName: creator?.fullName?.trim() || creator?.email || 'Dispatch',
     });
 
     return this.payrollRepo.save(bill);

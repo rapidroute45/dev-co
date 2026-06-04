@@ -1,6 +1,13 @@
 import { Schema, model, Types } from 'mongoose';
 import { PayrollStatus } from '../../domain/entities/payrollBill.entity';
 
+const ALL_STATUSES = [
+  ...Object.values(PayrollStatus),
+  'submitted',
+  'approved',
+  'rejected',
+];
+
 const RouteLineSchema = new Schema(
   {
     routeId: { type: Types.ObjectId, ref: 'Route', required: true },
@@ -21,6 +28,7 @@ const DriverLineSchema = new Schema(
     basePay: { type: Number, required: true, default: 0 },
     bonus: { type: Number, required: true, default: 0 },
     deduction: { type: Number, required: true, default: 0 },
+    overtime: { type: Number, required: true, default: 0 },
     total: { type: Number, required: true, default: 0 },
     routes: { type: [RouteLineSchema], default: [] },
   },
@@ -36,7 +44,7 @@ const PayrollBillSchema = new Schema(
     periodEnd: { type: Date, required: true },
     status: {
       type: String,
-      enum: Object.values(PayrollStatus),
+      enum: ALL_STATUSES,
       default: PayrollStatus.DRAFT,
       index: true,
     },
@@ -46,15 +54,18 @@ const PayrollBillSchema = new Schema(
     note: { type: String, default: null },
     createdBy: { type: Types.ObjectId, ref: 'User', required: true },
     createdByName: { type: String, default: '' },
-    submittedAt: { type: Date, default: null },
-    reviewedBy: { type: Types.ObjectId, ref: 'User', default: null },
-    reviewedByName: { type: String, default: null },
-    reviewedAt: { type: Date, default: null },
-    rejectionReason: { type: String, default: null },
+    sentToTeamLeadAt: { type: Date, default: null },
+    teamLeadNote: { type: String, default: null },
+    teamLeadReviewedAt: { type: Date, default: null },
+    paymentReceiptUrl: { type: String, default: null },
+    paidAt: { type: Date, default: null },
+    paidBy: { type: Types.ObjectId, ref: 'User', default: null },
+    paidByName: { type: String, default: null },
   },
   { timestamps: true }
 );
 
-PayrollBillSchema.index({ teamId: 1, periodStart: 1, periodEnd: 1 }, { unique: true });
+PayrollBillSchema.index({ teamId: 1, periodStart: 1, periodEnd: 1 });
+PayrollBillSchema.index({ teamId: 1, status: 1 });
 
 export const PayrollBillModel = model('PayrollBill', PayrollBillSchema);

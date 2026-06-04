@@ -15,11 +15,15 @@ export function mapPayrollBillToResponse(bill: PayrollBill) {
     note: bill.note,
     createdBy: bill.createdBy,
     createdByName: bill.createdByName,
-    submittedAt: bill.submittedAt ? bill.submittedAt.toISOString() : null,
-    reviewedBy: bill.reviewedBy,
-    reviewedByName: bill.reviewedByName,
-    reviewedAt: bill.reviewedAt ? bill.reviewedAt.toISOString() : null,
-    rejectionReason: bill.rejectionReason,
+    sentToTeamLeadAt: bill.sentToTeamLeadAt ? bill.sentToTeamLeadAt.toISOString() : null,
+    teamLeadNote: bill.teamLeadNote,
+    teamLeadReviewedAt: bill.teamLeadReviewedAt
+      ? bill.teamLeadReviewedAt.toISOString()
+      : null,
+    paymentReceiptUrl: bill.paymentReceiptUrl,
+    paidAt: bill.paidAt ? bill.paidAt.toISOString() : null,
+    paidBy: bill.paidBy,
+    paidByName: bill.paidByName,
     lineItems: bill.lineItems.map((line) => ({
       driverId: line.driverId,
       driverName: line.driverName,
@@ -27,6 +31,7 @@ export function mapPayrollBillToResponse(bill: PayrollBill) {
       basePay: line.basePay,
       bonus: line.bonus,
       deduction: line.deduction,
+      overtime: line.overtime ?? 0,
       total: line.total,
       routes: line.routes.map((r) => ({
         routeId: r.routeId,

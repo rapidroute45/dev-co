@@ -1,12 +1,30 @@
 export enum PayrollStatus {
-  /** Team lead is still editing bonuses/deductions. */
+  /** Ops generated from completed routes; not sent to team lead yet. */
   DRAFT = 'draft',
-  /** Team lead sent it to dispatch for approval. */
-  SUBMITTED = 'submitted',
-  /** Dispatch manager / admin approved the bill. */
-  APPROVED = 'approved',
-  /** Dispatch manager / admin sent it back for changes. */
-  REJECTED = 'rejected',
+  /** Sent to team lead for review. */
+  PENDING_TEAM_LEAD = 'pending_team_lead',
+  /** Team lead approved the bill. */
+  TEAM_LEAD_APPROVED = 'team_lead_approved',
+  /** Team lead flagged an issue (see teamLeadNote). */
+  TEAM_LEAD_DISPUTED = 'team_lead_disputed',
+  /** Ops marked paid and uploaded receipt. */
+  PAID = 'paid',
+}
+
+/** @deprecated Legacy statuses — normalized when reading from DB. */
+export const LEGACY_PAYROLL_STATUS_MAP: Record<string, PayrollStatus> = {
+  submitted: PayrollStatus.PENDING_TEAM_LEAD,
+  approved: PayrollStatus.TEAM_LEAD_APPROVED,
+  rejected: PayrollStatus.TEAM_LEAD_DISPUTED,
+};
+
+export function normalizePayrollStatus(status: string): PayrollStatus {
+  return (
+    LEGACY_PAYROLL_STATUS_MAP[status] ??
+    (Object.values(PayrollStatus).includes(status as PayrollStatus)
+      ? (status as PayrollStatus)
+      : PayrollStatus.DRAFT)
+  );
 }
 
 /** A single completed route credited to a driver on a bill. */
@@ -19,7 +37,7 @@ export interface PayrollRouteLine {
   rate: number;
 }
 
-/** Per-driver roll-up: base pay from routes + manual bonus/deduction. */
+/** Per-driver roll-up: base pay from routes + optional bonus/deduction. */
 export interface PayrollDriverLine {
   driverId: string;
   driverName: string;
@@ -27,6 +45,7 @@ export interface PayrollDriverLine {
   basePay: number;
   bonus: number;
   deduction: number;
+  overtime: number;
   total: number;
   routes: PayrollRouteLine[];
 }
@@ -42,14 +61,17 @@ export interface PayrollBillProps {
   standardRate: number;
   lineItems: PayrollDriverLine[];
   totalAmount: number;
+  /** Ops internal note. */
   note?: string | null;
   createdBy: string;
   createdByName: string;
-  submittedAt?: Date | null;
-  reviewedBy?: string | null;
-  reviewedByName?: string | null;
-  reviewedAt?: Date | null;
-  rejectionReason?: string | null;
+  sentToTeamLeadAt?: Date | null;
+  teamLeadNote?: string | null;
+  teamLeadReviewedAt?: Date | null;
+  paymentReceiptUrl?: string | null;
+  paidAt?: Date | null;
+  paidBy?: string | null;
+  paidByName?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -96,20 +118,26 @@ export class PayrollBill {
   get createdByName() {
     return this.props.createdByName;
   }
-  get submittedAt() {
-    return this.props.submittedAt ?? null;
+  get sentToTeamLeadAt() {
+    return this.props.sentToTeamLeadAt ?? null;
   }
-  get reviewedBy() {
-    return this.props.reviewedBy ?? null;
+  get teamLeadNote() {
+    return this.props.teamLeadNote ?? null;
   }
-  get reviewedByName() {
-    return this.props.reviewedByName ?? null;
+  get teamLeadReviewedAt() {
+    return this.props.teamLeadReviewedAt ?? null;
   }
-  get reviewedAt() {
-    return this.props.reviewedAt ?? null;
+  get paymentReceiptUrl() {
+    return this.props.paymentReceiptUrl ?? null;
   }
-  get rejectionReason() {
-    return this.props.rejectionReason ?? null;
+  get paidAt() {
+    return this.props.paidAt ?? null;
+  }
+  get paidBy() {
+    return this.props.paidBy ?? null;
+  }
+  get paidByName() {
+    return this.props.paidByName ?? null;
   }
   get createdAt() {
     return this.props.createdAt;

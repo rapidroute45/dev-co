@@ -14,11 +14,13 @@ export interface PayrollBillUpdateData {
   totalAmount?: number;
   status?: PayrollStatus;
   note?: string | null;
-  submittedAt?: Date | null;
-  reviewedBy?: string | null;
-  reviewedByName?: string | null;
-  reviewedAt?: Date | null;
-  rejectionReason?: string | null;
+  sentToTeamLeadAt?: Date | null;
+  teamLeadNote?: string | null;
+  teamLeadReviewedAt?: Date | null;
+  paymentReceiptUrl?: string | null;
+  paidAt?: Date | null;
+  paidBy?: string | null;
+  paidByName?: string | null;
 }
 
 export interface IPayrollRepository {
@@ -28,6 +30,9 @@ export interface IPayrollRepository {
     periodStart: Date,
     periodEnd: Date
   ): Promise<PayrollBill | null>;
+  findOpenBillByTeam(teamId: string): Promise<PayrollBill | null>;
+  findBillContainingRoute(routeId: string): Promise<PayrollBill | null>;
+  collectAllBilledRouteIds(): Promise<string[]>;
   findMany(filters: PayrollListFilters): Promise<PayrollBill[]>;
   save(bill: PayrollBill): Promise<PayrollBill>;
   update(id: string, data: PayrollBillUpdateData): Promise<PayrollBill | null>;
