@@ -60,7 +60,7 @@ const routeValidation = new RouteValidationService(
   routeRepo
 );
 const scheduleActivation = new ScheduleActivationService(scheduleRepo, routeRepo);
-const stopProximity = new StopProximityService(routeStopRepo);
+const stopProximity = new StopProximityService(routeStopRepo, routeRepo, scheduleRepo);
 const routeDelivery = new RouteDeliveryUseCase(
   routeRepo,
   routeStopRepo,
@@ -68,7 +68,9 @@ const routeDelivery = new RouteDeliveryUseCase(
   addressCodeRepo,
   routeStopEnrichment,
   dwellDetection,
-  stopProximity
+  stopProximity,
+  notificationService,
+  userRepo
 );
 
 const controller = new RouteController(

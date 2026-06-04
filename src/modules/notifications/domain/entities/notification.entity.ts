@@ -6,6 +6,7 @@ export enum NotificationType {
   DOCUMENT_VERIFIED = 'document_verified',
   DOCUMENT_REJECTED = 'document_rejected',
   DRIVER_DWELLING = 'driver_dwelling',
+  STOP_AUTO_COMPLETED = 'stop_auto_completed',
 }
 
 export interface NotificationProps {

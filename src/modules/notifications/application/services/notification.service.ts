@@ -146,6 +146,58 @@ export class NotificationService {
     return saved;
   }
 
+  /** Ops review GPS proof after a stop auto-completes at the delivery address. */
+  async notifyStopAutoCompleted(input: {
+    recipientIds: string[];
+    routeId: string;
+    driverId: string;
+    driverName: string;
+    stopId: string;
+    stopName: string;
+    lat: number;
+    lng: number;
+  }): Promise<void> {
+    const recipients = [
+      ...new Set(
+        input.recipientIds.filter((id) => id && id !== input.driverId)
+      ),
+    ];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      routeId: input.routeId,
+      driverId: input.driverId,
+      driverName: input.driverName,
+      stopId: input.stopId,
+      stopName: input.stopName,
+      lat: input.lat,
+      lng: input.lng,
+      deepLink: `/routes/tracking/${input.routeId}`,
+      requiresVerification: true,
+    };
+
+    const title = 'Stop delivered (GPS)';
+    const message = `${input.driverName} auto-completed ${input.stopName}. Verify location on the map.`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.STOP_AUTO_COMPLETED,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(recipients, title, message, payload);
+  }
+
   private async sendPushIfSupported(
     _recipientIds: string[],
     _title: string,

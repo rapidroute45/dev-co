@@ -14,6 +14,9 @@ import { mapStopsToResponse } from '../utils/routeStops';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 import { DwellDetectionService } from '../services/dwellDetection.service';
 import { StopProximityService } from '../services/stopProximity.service';
+import { NotificationService } from '../../../notifications/application/services/notification.service';
+import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
+import { UserRole } from '../../../../shared/constants/roles';
 
 export class RouteDeliveryUseCase {
   constructor(
@@ -23,7 +26,9 @@ export class RouteDeliveryUseCase {
     private addressCodeRepo: AddressAccessCodeRepository,
     private routeStopEnrichment: RouteStopEnrichmentService,
     private dwellDetection: DwellDetectionService,
-    private stopProximity: StopProximityService
+    private stopProximity: StopProximityService,
+    private notificationService: NotificationService,
+    private userRepo: IUserRepository
   ) {}
 
   private async assertDriverRoute(routeId: string, driverId: string) {
@@ -78,6 +83,20 @@ export class RouteDeliveryUseCase {
       recordedAt,
     });
 
+    if (autoCompletedStops.length > 0) {
+      await this.routeRepo.update(routeId, {
+        deliveryVerification: DeliveryVerification.PENDING,
+      });
+      await this.notifyAutoCompletedStops({
+        routeId,
+        driverId,
+        teamId: route.teamId,
+        lat,
+        lng,
+        stops: autoCompletedStops,
+      });
+    }
+
     console.log('[location-ping]', {
       routeId,
       driverId,
@@ -95,6 +114,41 @@ export class RouteDeliveryUseCase {
       dwell,
       autoCompletedStops,
     };
+  }
+
+  private async notifyAutoCompletedStops(params: {
+    routeId: string;
+    driverId: string;
+    teamId: string;
+    lat: number;
+    lng: number;
+    stops: { stopId: string; stopName: string }[];
+  }): Promise<void> {
+    const opsUsers = await this.userRepo.findActiveByRoles([
+      UserRole.ADMIN,
+      UserRole.DISPATCH_MANAGER,
+    ]);
+    const recipientIds = new Set<string>();
+    for (const u of opsUsers) {
+      if (u.id) recipientIds.add(u.id);
+    }
+
+    const driver = await this.userRepo.findById(params.driverId);
+    const driverName =
+      driver?.fullName?.trim() || driver?.email?.split('@')[0] || 'Driver';
+
+    for (const stop of params.stops) {
+      await this.notificationService.notifyStopAutoCompleted({
+        recipientIds: [...recipientIds],
+        routeId: params.routeId,
+        driverId: params.driverId,
+        driverName,
+        stopId: stop.stopId,
+        stopName: stop.stopName,
+        lat: params.lat,
+        lng: params.lng,
+      });
+    }
   }
 
   async returnStop(

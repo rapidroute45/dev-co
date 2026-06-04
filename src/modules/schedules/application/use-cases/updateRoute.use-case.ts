@@ -125,21 +125,29 @@ export class UpdateRouteUseCase {
       if (!DELIVERY_VERIFICATIONS.includes(verification)) {
         throw new AppError('Invalid delivery verification.', 400);
       }
+      const canVerifyInProgress = existing.status === RouteStatus.IN_PROGRESS;
       if (
         existing.status !== RouteStatus.COMPLETED &&
-        existing.status !== RouteStatus.NOT_VERIFIED
+        existing.status !== RouteStatus.NOT_VERIFIED &&
+        !canVerifyInProgress
       ) {
         throw new AppError(
-          'Delivery verification applies to completed routes only.',
+          'Delivery verification applies to completed or in-progress routes with GPS proof.',
           400
         );
       }
       patch.deliveryVerification = verification;
       if (verification === DeliveryVerification.VERIFIED) {
-        patch.status = RouteStatus.COMPLETED;
+        if (existing.status !== RouteStatus.IN_PROGRESS) {
+          patch.status = RouteStatus.COMPLETED;
+        }
       }
       if (verification === DeliveryVerification.REJECTED) {
-        patch.status = RouteStatus.NOT_VERIFIED;
+        if (existing.status === RouteStatus.IN_PROGRESS) {
+          patch.deliveryVerification = DeliveryVerification.REJECTED;
+        } else {
+          patch.status = RouteStatus.NOT_VERIFIED;
+        }
       }
     } else if (driverChanged) {
       patch.status = RouteStatus.PENDING;

@@ -22,6 +22,10 @@ function mapDoc(doc: {
   completedAt?: Date | null;
   lat?: number | null;
   lng?: number | null;
+  destinationLat?: number | null;
+  destinationLng?: number | null;
+  proximityAnchorLat?: number | null;
+  proximityAnchorLng?: number | null;
   proximityEnteredAt?: Date | null;
 }): RouteStopRecord {
   return {
@@ -40,6 +44,10 @@ function mapDoc(doc: {
     completedAt: doc.completedAt ?? null,
     lat: doc.lat ?? null,
     lng: doc.lng ?? null,
+    destinationLat: doc.destinationLat ?? null,
+    destinationLng: doc.destinationLng ?? null,
+    proximityAnchorLat: doc.proximityAnchorLat ?? null,
+    proximityAnchorLng: doc.proximityAnchorLng ?? null,
     proximityEnteredAt: doc.proximityEnteredAt ?? null,
   };
 }
@@ -101,6 +109,10 @@ export class RouteStopRepository implements IRouteStopRepository {
         | 'completedAt'
         | 'lat'
         | 'lng'
+        | 'destinationLat'
+        | 'destinationLng'
+        | 'proximityAnchorLat'
+        | 'proximityAnchorLng'
         | 'proximityEnteredAt'
       >
     >

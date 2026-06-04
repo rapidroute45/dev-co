@@ -24,7 +24,13 @@ const RouteStopSchema = new Schema(
     completedAt: { type: Date, default: null },
     lat: { type: Number, default: null },
     lng: { type: Number, default: null },
-    /** When driver first entered STOP_PROXIMITY_RADIUS while stop is pending. */
+    /** Geocoded delivery address (not overwritten by driver GPS). */
+    destinationLat: { type: Number, default: null },
+    destinationLng: { type: Number, default: null },
+    /** Driver GPS when they first entered the stop approach zone. */
+    proximityAnchorLat: { type: Number, default: null },
+    proximityAnchorLng: { type: Number, default: null },
+    /** When driver first entered the stop approach zone while pending. */
     proximityEnteredAt: { type: Date, default: null },
   },
   { timestamps: true }

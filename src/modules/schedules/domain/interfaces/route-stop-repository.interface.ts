@@ -16,6 +16,10 @@ export type RouteStopRecord = {
   completedAt: Date | null;
   lat: number | null;
   lng: number | null;
+  destinationLat: number | null;
+  destinationLng: number | null;
+  proximityAnchorLat: number | null;
+  proximityAnchorLng: number | null;
   proximityEnteredAt: Date | null;
 };
 
@@ -51,6 +55,10 @@ export interface IRouteStopRepository {
         | 'completedAt'
         | 'lat'
         | 'lng'
+        | 'destinationLat'
+        | 'destinationLng'
+        | 'proximityAnchorLat'
+        | 'proximityAnchorLng'
         | 'proximityEnteredAt'
       >
     >
