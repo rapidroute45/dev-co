@@ -45,7 +45,10 @@ export interface IRouteRepository {
   countByScheduleDate(scheduleDate: Date, status?: RouteStatus): Promise<number>;
   countByTeamAndScheduleDate(teamId: string, scheduleDate: Date, status?: RouteStatus): Promise<number>;
   findBusyDriverIdsOnDate(scheduleDate: Date): Promise<string[]>;
-  findManyByDriverId(driverId: string, filters?: { fromDate?: Date; toDate?: Date }): Promise<Route[]>;
+  findManyByDriverId(
+    driverId: string,
+    filters?: { fromDate?: Date; toDate?: Date; status?: RouteStatus | RouteStatus[] }
+  ): Promise<Route[]>;
   findCompletedByDriverId(driverId: string, filters?: { fromDate?: Date; toDate?: Date }): Promise<Route[]>;
   findCompletedByTeamInRange(teamId: string, fromDate: Date, toDate: Date): Promise<Route[]>;
   findCompletedByTeamExcludingRouteIds(

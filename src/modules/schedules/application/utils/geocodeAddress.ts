@@ -54,9 +54,13 @@ export async function geocodeAddress(
     try {
       const q = encodeURIComponent(variant);
       const url = `https://nominatim.openstreetmap.org/search?format=json&limit=1&q=${q}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8_000);
       const res = await fetch(url, {
         headers: { 'User-Agent': 'DispatchApp/1.0 (route-stop-geocode)' },
+        signal: controller.signal,
       });
+      clearTimeout(timeout);
       if (!res.ok) continue;
 
       const data = (await res.json()) as { lat?: string; lon?: string }[];

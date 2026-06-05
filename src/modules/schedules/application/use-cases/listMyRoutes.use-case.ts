@@ -3,6 +3,7 @@ import { IRouteRepository } from '../../domain/interfaces/route-repository.inter
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { IStoreRepository } from '../../../stores/domain/interfaces/store-repository.interface';
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
+import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { formatScheduleDate, parseScheduleDate } from '../utils/scheduleDate';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
@@ -23,10 +24,18 @@ export class ListMyRoutesUseCase {
     }
 
     const scheduleDate = parseScheduleDate(date);
-    const routes = await this.routeRepo.findManyByDriverId(driverUserId, {
+    const byDate = await this.routeRepo.findManyByDriverId(driverUserId, {
       fromDate: scheduleDate,
       toDate: scheduleDate,
     });
+
+    /** Routes started before midnight stay in_progress on the prior schedule date. */
+    const inProgressAnyDay = await this.routeRepo.findManyByDriverId(driverUserId, {
+      status: RouteStatus.IN_PROGRESS,
+    });
+    const seen = new Set(byDate.map((r) => r.id).filter(Boolean) as string[]);
+    const crossDate = inProgressAnyDay.filter((r) => r.id && !seen.has(r.id));
+    const routes = [...crossDate, ...byDate];
 
     const enriched = await this.routeStopEnrichment.enrichRoutes(routes, async (route) => {
       const team = await this.teamRepo.findById(route.teamId);

@@ -12,6 +12,7 @@ export interface PayrollListFilters {
 export interface PayrollBillUpdateData {
   lineItems?: PayrollDriverLine[];
   totalAmount?: number;
+  standardRate?: number;
   status?: PayrollStatus;
   note?: string | null;
   sentToTeamLeadAt?: Date | null;
@@ -36,4 +37,5 @@ export interface IPayrollRepository {
   findMany(filters: PayrollListFilters): Promise<PayrollBill[]>;
   save(bill: PayrollBill): Promise<PayrollBill>;
   update(id: string, data: PayrollBillUpdateData): Promise<PayrollBill | null>;
+  deleteById(id: string): Promise<boolean>;
 }

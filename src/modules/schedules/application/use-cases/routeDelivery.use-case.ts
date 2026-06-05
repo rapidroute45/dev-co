@@ -76,12 +76,13 @@ export class RouteDeliveryUseCase {
       recordedAt,
     });
 
-    const autoCompletedStops = await this.stopProximity.evaluateDriverAtStops({
-      routeId,
-      lat,
-      lng,
-      recordedAt,
-    });
+    const { autoCompleted: autoCompletedStops, arrival: stopArrival } =
+      await this.stopProximity.evaluateDriverAtStops({
+        routeId,
+        lat,
+        lng,
+        recordedAt,
+      });
 
     if (autoCompletedStops.length > 0) {
       await this.routeRepo.update(routeId, {
@@ -113,6 +114,7 @@ export class RouteDeliveryUseCase {
       recordedAt: recordedAt.toISOString(),
       dwell,
       autoCompletedStops,
+      stopArrival,
     };
   }
 

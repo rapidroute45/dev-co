@@ -3,7 +3,6 @@ import {
   DWELL_THRESHOLD_MS,
   STOP_ANCHOR_RADIUS_METERS,
   STOP_APPROACH_RADIUS_METERS,
-  STOP_ZONE_EXIT_METERS,
 } from '../../../../shared/constants/dwellDetection';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository, RouteStopRecord } from '../../domain/interfaces/route-stop-repository.interface';
@@ -15,6 +14,18 @@ export type AutoCompletedStop = {
   stopId: string;
   stopName: string;
 };
+
+/** Shown on driver app so they know the dwell timer is running. */
+export type StopArrivalStatus = {
+  stopId: string;
+  stopName: string;
+  inZone: boolean;
+  dwellSeconds: number;
+  thresholdSeconds: number;
+};
+
+const ANCHOR_EXIT_METERS = STOP_ANCHOR_RADIUS_METERS * 1.5;
+const GEOCODE_MISMATCH_REFINE_METERS = 150;
 
 export class StopProximityService {
   constructor(
@@ -28,18 +39,20 @@ export class StopProximityService {
     lat: number;
     lng: number;
     recordedAt: Date;
-  }): Promise<AutoCompletedStop[]> {
+  }): Promise<{ autoCompleted: AutoCompletedStop[]; arrival: StopArrivalStatus | null }> {
     const { routeId, lat, lng, recordedAt } = params;
     const geocodeContext = await this.resolveGeocodeContext(routeId);
     const stops = await this.routeStopRepo.findByRouteId(routeId);
-    const pendingDropoffs = stops.filter(
-      (s) => s.type === 'dropoff' && s.status === RouteStopStatus.PENDING && s.id
-    );
+    const pendingDropoffs = stops
+      .filter((s) => s.type === 'dropoff' && s.status === RouteStopStatus.PENDING && s.id)
+      .sort((a, b) => a.sequence - b.sequence);
 
     const autoCompleted: AutoCompletedStop[] = [];
+    const nextPendingId = pendingDropoffs[0]?.id ?? null;
 
-    for (const stop of pendingDropoffs) {
-      const stopId = stop.id!;
+    for (const meta of pendingDropoffs) {
+      const stopId = meta.id!;
+      const stop = (await this.routeStopRepo.findById(stopId)) ?? meta;
       const completed = await this.evaluateStop({
         stop,
         stopId,
@@ -48,13 +61,22 @@ export class StopProximityService {
         lng,
         recordedAt,
         geocodeContext,
+        isNextPending: stopId === nextPendingId,
       });
       if (completed) {
         autoCompleted.push({ stopId, stopName: stop.name });
       }
     }
 
-    return autoCompleted;
+    let arrival: StopArrivalStatus | null = null;
+    if (nextPendingId) {
+      const fresh = await this.routeStopRepo.findById(nextPendingId);
+      if (fresh) {
+        arrival = this.buildArrivalStatus(fresh, lat, lng, recordedAt);
+      }
+    }
+
+    return { autoCompleted, arrival };
   }
 
   private async resolveGeocodeContext(routeId: string): Promise<GeocodeContext> {
@@ -77,52 +99,39 @@ export class StopProximityService {
     lng: number;
     recordedAt: Date;
     geocodeContext: GeocodeContext;
+    isNextPending: boolean;
   }): Promise<boolean> {
-    const { stop, stopId, routeId, lat, lng, recordedAt, geocodeContext } = params;
+    const { stop, stopId, routeId, lat, lng, recordedAt, geocodeContext, isNextPending } =
+      params;
 
-    let destination = await this.ensureDestination(stop, stopId, geocodeContext);
-    const anchor = this.readAnchor(stop);
+    const destination = await this.ensureDestination(stop, stopId, geocodeContext);
+    let anchor = this.readAnchor(stop);
 
-    if (!destination && anchor) {
-      destination = anchor;
-    }
+    const distDest =
+      destination != null
+        ? haversineMeters(destination.lat, destination.lng, lat, lng)
+        : null;
+    let distAnchor = anchor ? haversineMeters(anchor.lat, anchor.lng, lat, lng) : null;
 
-    const distDest = destination
-      ? haversineMeters(destination.lat, destination.lng, lat, lng)
-      : null;
-    const distAnchor = anchor ? haversineMeters(anchor.lat, anchor.lng, lat, lng) : null;
-
-    const leftZone =
-      destination != null &&
-      distDest != null &&
-      distDest > STOP_ZONE_EXIT_METERS &&
-      (anchor == null || (distAnchor != null && distAnchor > STOP_ANCHOR_RADIUS_METERS * 2));
-
-    if (leftZone) {
-      if (stop.proximityEnteredAt || anchor) {
-        await this.clearProximitySession(stopId);
-      }
+    if (anchor && distAnchor != null && distAnchor > ANCHOR_EXIT_METERS) {
+      await this.clearProximitySession(stopId);
+      anchor = null;
+      distAnchor = null;
+      console.log('[stop-proximity]', { routeId, stopId, event: 'left_anchor_zone' });
       return false;
     }
 
-    let inApproach =
-      (destination != null &&
-        distDest != null &&
-        distDest <= STOP_APPROACH_RADIUS_METERS) ||
-      (anchor != null && distAnchor != null && distAnchor <= STOP_ANCHOR_RADIUS_METERS);
+    let inZone = false;
 
-    // Geocode often lands on the street, not the building — learn from driver GPS.
-    const badGeocodeButNearby =
-      destination != null &&
-      distDest != null &&
-      distDest > STOP_APPROACH_RADIUS_METERS &&
-      distDest <= 600;
-
-    if (!inApproach && badGeocodeButNearby && !anchor) {
-      inApproach = true;
-    }
-
-    if (!inApproach && !destination) {
+    if (anchor && distAnchor != null && distAnchor <= STOP_ANCHOR_RADIUS_METERS) {
+      inZone = true;
+    } else if (destination && distDest != null && distDest <= STOP_APPROACH_RADIUS_METERS) {
+      inZone = true;
+    } else if (
+      isNextPending &&
+      !destination &&
+      distDest == null
+    ) {
       await this.routeStopRepo.updateById(stopId, {
         destinationLat: lat,
         destinationLng: lng,
@@ -130,41 +139,53 @@ export class StopProximityService {
         proximityAnchorLng: lng,
         proximityEnteredAt: recordedAt,
       });
-      console.log('[stop-proximity]', {
-        routeId,
-        stopId,
-        event: 'destination_learned_from_gps',
-      });
+      console.log('[stop-proximity]', { routeId, stopId, event: 'learned_stop_from_gps' });
       return false;
+    } else if (
+      isNextPending &&
+      destination &&
+      distDest != null &&
+      distDest > STOP_APPROACH_RADIUS_METERS &&
+      distDest <= 600
+    ) {
+      inZone = true;
     }
 
-    if (!inApproach) {
+    if (!inZone) {
       return false;
     }
 
     if (!anchor) {
-      await this.routeStopRepo.updateById(stopId, {
+      const patch: Parameters<IRouteStopRepository['updateById']>[1] = {
         proximityAnchorLat: lat,
         proximityAnchorLng: lng,
         proximityEnteredAt: recordedAt,
-      });
-      console.log('[stop-proximity]', {
-        routeId,
-        stopId,
-        event: 'anchor_set',
-        distDest: distDest != null ? Math.round(distDest) : null,
-      });
+      };
+      if (
+        destination &&
+        distDest != null &&
+        distDest > GEOCODE_MISMATCH_REFINE_METERS
+      ) {
+        patch.destinationLat = lat;
+        patch.destinationLng = lng;
+        console.log('[stop-proximity]', {
+          routeId,
+          stopId,
+          event: 'refined_destination_to_driver_gps',
+          distDestM: Math.round(distDest),
+        });
+      }
+      await this.routeStopRepo.updateById(stopId, patch);
       return false;
     }
 
+    const enteredAt = stop.proximityEnteredAt ?? recordedAt;
     if (!stop.proximityEnteredAt) {
-      await this.routeStopRepo.updateById(stopId, {
-        proximityEnteredAt: recordedAt,
-      });
+      await this.routeStopRepo.updateById(stopId, { proximityEnteredAt: recordedAt });
       return false;
     }
 
-    const dwellMs = recordedAt.getTime() - stop.proximityEnteredAt.getTime();
+    const dwellMs = recordedAt.getTime() - enteredAt.getTime();
     if (dwellMs < DWELL_THRESHOLD_MS) {
       return false;
     }
@@ -192,13 +213,49 @@ export class StopProximityService {
         stopId,
         stopName: stop.name,
         dwellMs,
-        distDest: distDest != null ? Math.round(distDest) : null,
-        distAnchor: Math.round(distAnchor),
+        distAnchorM: Math.round(distAnchor),
       });
       return true;
     }
 
     return false;
+  }
+
+  private buildArrivalStatus(
+    stop: RouteStopRecord,
+    lat: number,
+    lng: number,
+    recordedAt: Date
+  ): StopArrivalStatus {
+    const anchor = this.readAnchor(stop);
+    const destination =
+      stop.destinationLat != null && stop.destinationLng != null
+        ? { lat: stop.destinationLat, lng: stop.destinationLng }
+        : null;
+
+    const distAnchor = anchor
+      ? haversineMeters(anchor.lat, anchor.lng, lat, lng)
+      : null;
+    const distDest = destination
+      ? haversineMeters(destination.lat, destination.lng, lat, lng)
+      : null;
+
+    const inZone =
+      (distAnchor != null && distAnchor <= STOP_ANCHOR_RADIUS_METERS) ||
+      (distDest != null && distDest <= STOP_APPROACH_RADIUS_METERS);
+
+    const enteredAt = stop.proximityEnteredAt;
+    const dwellSeconds = enteredAt
+      ? Math.max(0, Math.floor((recordedAt.getTime() - enteredAt.getTime()) / 1000))
+      : 0;
+
+    return {
+      stopId: stop.id!,
+      stopName: stop.name,
+      inZone,
+      dwellSeconds,
+      thresholdSeconds: Math.floor(DWELL_THRESHOLD_MS / 1000),
+    };
   }
 
   private async ensureDestination(
@@ -208,16 +265,6 @@ export class StopProximityService {
   ): Promise<{ lat: number; lng: number } | null> {
     if (stop.destinationLat != null && stop.destinationLng != null) {
       return { lat: stop.destinationLat, lng: stop.destinationLng };
-    }
-
-    if (stop.lat != null && stop.lng != null && stop.status === RouteStopStatus.PENDING) {
-      await this.routeStopRepo.updateById(stopId, {
-        destinationLat: stop.lat,
-        destinationLng: stop.lng,
-        lat: null,
-        lng: null,
-      });
-      return { lat: stop.lat, lng: stop.lng };
     }
 
     const geo = await geocodeAddress(stop.address, geocodeContext);

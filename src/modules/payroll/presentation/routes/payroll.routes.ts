@@ -12,7 +12,8 @@ import { PayrollBillRepository } from '../../infrastructure/repositories/payroll
 import { GeneratePayrollBillUseCase } from '../../application/use-cases/generatePayrollBill.use-case';
 import { ListPayrollBillsUseCase } from '../../application/use-cases/listPayrollBills.use-case';
 import { GetPayrollBillUseCase } from '../../application/use-cases/getPayrollBill.use-case';
-import { UpdatePayrollLineItemsUseCase } from '../../application/use-cases/updatePayrollLineItems.use-case';
+import { UpdatePayrollBillUseCase } from '../../application/use-cases/updatePayrollBill.use-case';
+import { DeletePayrollBillUseCase } from '../../application/use-cases/deletePayrollBill.use-case';
 import { SendPayrollToTeamLeadUseCase } from '../../application/use-cases/sendPayrollToTeamLead.use-case';
 import {
   TeamLeadApprovePayrollUseCase,
@@ -34,7 +35,8 @@ const controller = new PayrollController(
   new GetPayrollPendingSummaryUseCase(payrollRepo, routeRepo, userRepo, teamRepo),
   new ListPayrollBillsUseCase(payrollRepo),
   new GetPayrollBillUseCase(payrollRepo),
-  new UpdatePayrollLineItemsUseCase(payrollRepo),
+  new UpdatePayrollBillUseCase(payrollRepo),
+  new DeletePayrollBillUseCase(payrollRepo),
   new SendPayrollToTeamLeadUseCase(payrollRepo),
   new TeamLeadApprovePayrollUseCase(payrollRepo),
   new TeamLeadDisputePayrollUseCase(payrollRepo),
@@ -55,7 +57,9 @@ router.get('/pending-summary', payrollViewerGuard, controller.pendingSummary);
 router.get('/bills', payrollViewerGuard, controller.list);
 router.get('/bills/:id', payrollViewerGuard, controller.getById);
 router.post('/bills/generate', managerGuard, controller.generate);
+router.put('/bills/:id', managerGuard, controller.updateBill);
 router.patch('/bills/:id/line-items', managerGuard, controller.updateLineItems);
+router.delete('/bills/:id', managerGuard, controller.deleteBill);
 router.post('/bills/:id/send-to-team-lead', managerGuard, controller.sendToTeamLead);
 router.post('/bills/:id/team-lead/approve', teamLeadGuard, controller.teamLeadApprove);
 router.post('/bills/:id/team-lead/dispute', teamLeadGuard, controller.teamLeadDispute);

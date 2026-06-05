@@ -154,9 +154,14 @@ export class RouteRepository implements IRouteRepository {
 
   async findManyByDriverId(
     driverId: string,
-    filters?: { fromDate?: Date; toDate?: Date }
+    filters?: { fromDate?: Date; toDate?: Date; status?: RouteStatus | RouteStatus[] }
   ): Promise<Route[]> {
     const query: Record<string, unknown> = { driverId };
+    if (filters?.status != null) {
+      query.status = Array.isArray(filters.status)
+        ? { $in: filters.status }
+        : filters.status;
+    }
     if (filters?.fromDate || filters?.toDate) {
       query.scheduleDate = {};
       if (filters.fromDate) (query.scheduleDate as Record<string, Date>).$gte = filters.fromDate;

@@ -194,6 +194,7 @@ export class PayrollBillRepository implements IPayrollRepository {
     const patch: Record<string, unknown> = {};
     if (data.lineItems !== undefined) patch.lineItems = data.lineItems;
     if (data.totalAmount !== undefined) patch.totalAmount = data.totalAmount;
+    if (data.standardRate !== undefined) patch.standardRate = data.standardRate;
     if (data.status !== undefined) patch.status = data.status;
     if (data.note !== undefined) patch.note = data.note;
     if (data.sentToTeamLeadAt !== undefined) patch.sentToTeamLeadAt = data.sentToTeamLeadAt;
@@ -208,5 +209,10 @@ export class PayrollBillRepository implements IPayrollRepository {
       returnDocument: 'after',
     }).lean<BillDoc>();
     return doc ? mapDoc(doc) : null;
+  }
+
+  async deleteById(id: string): Promise<boolean> {
+    const result = await PayrollBillModel.deleteOne({ _id: id });
+    return result.deletedCount > 0;
   }
 }

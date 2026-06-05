@@ -6,7 +6,8 @@ import { mapPayrollBillToResponse } from '../../application/mappers/payrollRespo
 import { GeneratePayrollBillUseCase } from '../../application/use-cases/generatePayrollBill.use-case';
 import { ListPayrollBillsUseCase } from '../../application/use-cases/listPayrollBills.use-case';
 import { GetPayrollBillUseCase } from '../../application/use-cases/getPayrollBill.use-case';
-import { UpdatePayrollLineItemsUseCase } from '../../application/use-cases/updatePayrollLineItems.use-case';
+import { UpdatePayrollBillUseCase } from '../../application/use-cases/updatePayrollBill.use-case';
+import { DeletePayrollBillUseCase } from '../../application/use-cases/deletePayrollBill.use-case';
 import { SendPayrollToTeamLeadUseCase } from '../../application/use-cases/sendPayrollToTeamLead.use-case';
 import {
   TeamLeadApprovePayrollUseCase,
@@ -21,7 +22,8 @@ export class PayrollController {
     private pendingSummaryUseCase: GetPayrollPendingSummaryUseCase,
     private listUseCase: ListPayrollBillsUseCase,
     private getUseCase: GetPayrollBillUseCase,
-    private updateLineItemsUseCase: UpdatePayrollLineItemsUseCase,
+    private updatePayrollBillUseCase: UpdatePayrollBillUseCase,
+    private deletePayrollBillUseCase: DeletePayrollBillUseCase,
     private sendToTeamLeadUseCase: SendPayrollToTeamLeadUseCase,
     private teamLeadApproveUseCase: TeamLeadApprovePayrollUseCase,
     private teamLeadDisputeUseCase: TeamLeadDisputePayrollUseCase,
@@ -90,14 +92,54 @@ export class PayrollController {
     }
   };
 
+  updateBill = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return next(new AppError('Unauthorized', 401));
+      const { adjustments, note, standardRate, removeRouteIds } = req.body as {
+        adjustments?: {
+          driverId: string;
+          bonus?: number;
+          deduction?: number;
+          overtime?: number;
+        }[];
+        note?: string | null;
+        standardRate?: number;
+        removeRouteIds?: string[];
+      };
+      const bill = await this.updatePayrollBillUseCase.execute(
+        { role: req.user.role },
+        String(req.params.id),
+        {
+          adjustments: adjustments ?? [],
+          note,
+          standardRate,
+          removeRouteIds,
+        }
+      );
+      res.status(200).json({
+        success: true,
+        message: 'Payroll bill updated.',
+        data: mapPayrollBillToResponse(bill),
+      });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  /** @deprecated Prefer PUT /bills/:id — kept for older clients. */
   updateLineItems = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user) return next(new AppError('Unauthorized', 401));
       const { adjustments, note } = req.body as {
-        adjustments?: { driverId: string; bonus?: number; deduction?: number }[];
-        note?: string;
+        adjustments?: {
+          driverId: string;
+          bonus?: number;
+          deduction?: number;
+          overtime?: number;
+        }[];
+        note?: string | null;
       };
-      const bill = await this.updateLineItemsUseCase.execute(
+      const bill = await this.updatePayrollBillUseCase.execute(
         { role: req.user.role },
         String(req.params.id),
         { adjustments: adjustments ?? [], note }
@@ -106,6 +148,22 @@ export class PayrollController {
         success: true,
         message: 'Payroll bill updated.',
         data: mapPayrollBillToResponse(bill),
+      });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  deleteBill = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return next(new AppError('Unauthorized', 401));
+      await this.deletePayrollBillUseCase.execute(
+        { role: req.user.role },
+        String(req.params.id)
+      );
+      res.status(200).json({
+        success: true,
+        message: 'Payroll bill deleted.',
       });
     } catch (e) {
       next(e);
