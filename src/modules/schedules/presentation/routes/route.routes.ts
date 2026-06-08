@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { dispatchOpsGuard } from '../../../../shared/middleware/dispatchOpsGuard';
 import { managerGuard } from '../../../../shared/middleware/managerGuard';
 import { scheduleViewerGuard } from '../../../../shared/middleware/scheduleViewerGuard';
 import { driverGuard } from '../../../../shared/middleware/driverGuard';
@@ -70,7 +71,8 @@ const routeDelivery = new RouteDeliveryUseCase(
   dwellDetection,
   stopProximity,
   notificationService,
-  userRepo
+  userRepo,
+  scheduleRepo
 );
 
 const controller = new RouteController(
@@ -95,9 +97,10 @@ const controller = new RouteController(
     storeRepo,
     scheduleActivation,
     routeStopEnrichment,
-    addressCodeRepo
+    addressCodeRepo,
+    userRepo
   ),
-  new DeleteRouteUseCase(routeRepo, routeStopRepo, driverLocationRepo),
+  new DeleteRouteUseCase(routeRepo, routeStopRepo, driverLocationRepo, scheduleRepo),
   new AcceptRouteUseCase(
     routeRepo,
     scheduleRepo,
@@ -138,18 +141,19 @@ router.get('/offers/pending', driverGuard, controller.listPendingOffers);
 router.get('/me', driverGuard, controller.listMyRoutes);
 router.get('/me/completed', driverGuard, controller.listMyCompletedRoutes);
 router.get('/', scheduleViewerGuard, controller.list);
-router.post('/', managerGuard, controller.create);
+router.post('/', dispatchOpsGuard, controller.create);
 router.get('/:id/tracking', scheduleViewerGuard, controller.getTracking);
 router.get('/:id', scheduleViewerGuard, controller.getById);
-router.put('/:id', managerGuard, controller.update);
+router.put('/:id', dispatchOpsGuard, controller.update);
 router.post('/:id/assign-driver', teamLeadGuard, controller.assignDriver);
 router.post('/:id/accept', driverGuard, controller.accept);
 router.post('/:id/decline', driverGuard, controller.decline);
 router.post('/:id/start', driverGuard, controller.startRoute);
 router.post('/:id/complete', driverGuard, controller.completeRoute);
 router.post('/:id/location', driverGuard, controller.reportLocation);
+router.post('/:routeId/stops/:stopId/complete', driverGuard, controller.completeStop);
 router.post('/:routeId/stops/:stopId/return', driverGuard, controller.returnStop);
-router.put('/:routeId/stops/:stopId/access-code', managerGuard, controller.setAccessCode);
-router.delete('/:id', managerGuard, controller.delete);
+router.put('/:routeId/stops/:stopId/access-code', dispatchOpsGuard, controller.setAccessCode);
+router.delete('/:id', dispatchOpsGuard, controller.delete);
 
 export default router;

@@ -2,16 +2,30 @@ import { AppError } from '../../../../shared/errors/app-error';
 import { UserRole } from '../../../../shared/constants/roles';
 import { PayrollBill, PayrollStatus } from '../../domain/entities/payrollBill.entity';
 import { IPayrollRepository } from '../../domain/interfaces/payroll-repository.interface';
+import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
+import { PayrollAuditService } from '../services/payrollAudit.service';
+import { NotificationService } from '../../../notifications/application/services/notification.service';
 
-interface Actor {
+interface TeamLeadActor {
+  id: string;
+  role: UserRole | null;
+  teamId?: string | null;
+}
+
+interface TeamLeadReviewActor {
   role: UserRole | null;
   teamId?: string | null;
 }
 
 export class TeamLeadApprovePayrollUseCase {
-  constructor(private payrollRepo: IPayrollRepository) {}
+  constructor(
+    private payrollRepo: IPayrollRepository,
+    private userRepo: IUserRepository,
+    private audit: PayrollAuditService,
+    private notifications: NotificationService
+  ) {}
 
-  async execute(actor: Actor, billId: string): Promise<PayrollBill> {
+  async execute(actor: TeamLeadActor, billId: string): Promise<PayrollBill> {
     if (actor.role !== UserRole.TEAM_LEAD) {
       throw new AppError('Only team leads can approve payroll bills.', 403);
     }
@@ -31,6 +45,30 @@ export class TeamLeadApprovePayrollUseCase {
       teamLeadNote: null,
     });
     if (!updated) throw new AppError('Failed to approve payroll bill.', 500);
+
+    const actorUser = await this.userRepo.findById(actor.id);
+    await this.audit.log({
+      userId: actor.id,
+      userName: actorUser?.fullName?.trim() || actorUser?.email || 'Team Lead',
+      action: 'payroll_approved',
+      entityType: 'PayrollBill',
+      entityId: billId,
+      oldValue: { status: bill.status },
+      newValue: { status: PayrollStatus.TEAM_LEAD_APPROVED },
+    });
+
+    const opsUsers = await this.userRepo.findActiveByRoles([
+      UserRole.ADMIN,
+      UserRole.DISPATCH_MANAGER,
+    ]);
+    await this.notifications.notifyPayrollApproved({
+      recipientIds: opsUsers.map((u) => u.id!).filter(Boolean),
+      teamId: bill.teamId,
+      teamName: bill.teamName,
+      billId,
+      totalAmount: bill.totalAmount,
+    });
+
     return updated;
   }
 }
@@ -38,7 +76,7 @@ export class TeamLeadApprovePayrollUseCase {
 export class TeamLeadDisputePayrollUseCase {
   constructor(private payrollRepo: IPayrollRepository) {}
 
-  async execute(actor: Actor, billId: string, note: string): Promise<PayrollBill> {
+  async execute(actor: TeamLeadReviewActor, billId: string, note: string): Promise<PayrollBill> {
     if (actor.role !== UserRole.TEAM_LEAD) {
       throw new AppError('Only team leads can dispute payroll bills.', 403);
     }

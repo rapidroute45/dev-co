@@ -18,7 +18,7 @@ export class ScheduleController {
   create = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
-      const data = await this.createScheduleUseCase.execute(req.body, req.user.id);
+      const data = await this.createScheduleUseCase.execute(req.body, req.user.id, req.user);
       res.status(201).json({
         success: true,
         message: 'Schedule created successfully.',
@@ -64,7 +64,8 @@ export class ScheduleController {
     try {
       const data = await this.updateScheduleUseCase.execute(
         String(req.params.id),
-        req.body
+        req.body,
+        req.user
       );
       res.status(200).json({
         success: true,
@@ -78,7 +79,10 @@ export class ScheduleController {
 
   delete = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await this.deleteScheduleUseCase.execute(String(req.params.id));
+      const result = await this.deleteScheduleUseCase.execute(
+        String(req.params.id),
+        req.user
+      );
       res.status(200).json(result);
     } catch (error) {
       next(error);

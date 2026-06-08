@@ -1,5 +1,5 @@
 import { User } from '../../../auth/domain/entities/user.entity';
-import { roleRequiresTeam } from '../../../../shared/constants/roleRequirements';
+import { roleRequiresCity, roleRequiresTeam } from '../../../../shared/constants/roleRequirements';
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
 
 export type UserTeamBrief = {
@@ -22,8 +22,10 @@ export function mapUserToResponse(
     role: user.role,
     status: user.status,
     teamId: user.teamId,
+    assignedCity: user.assignedCity,
     team,
     requiresTeam: user.role ? roleRequiresTeam(user.role) : false,
+    requiresCity: user.role ? roleRequiresCity(user.role) : false,
     pendingRoleAssignment: user.status === 'pending' && !user.role,
     createdAt: user.createdAt,
     updatedAt: user.updatedAt,

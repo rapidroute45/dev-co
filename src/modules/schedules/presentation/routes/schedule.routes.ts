@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { managerGuard } from '../../../../shared/middleware/managerGuard';
+import { dispatchOpsGuard } from '../../../../shared/middleware/dispatchOpsGuard';
 import { scheduleViewerGuard } from '../../../../shared/middleware/scheduleViewerGuard';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { TeamRepository } from '../../../teams/infrastructure/repositories/team.repository';
@@ -30,7 +30,7 @@ const teamRepo = new TeamRepository();
 
 const controller = new ScheduleController(
   new CreateScheduleUseCase(scheduleRepo, storeRepo),
-  new ListSchedulesUseCase(scheduleRepo, storeRepo, routeRepo),
+  new ListSchedulesUseCase(scheduleRepo, storeRepo, routeRepo, userRepo),
   new GetScheduleUseCase(
     scheduleRepo,
     storeRepo,
@@ -43,10 +43,10 @@ const controller = new ScheduleController(
   new DeleteScheduleUseCase(scheduleRepo, routeRepo, routeStopRepo)
 );
 
-router.post('/', managerGuard, controller.create);
+router.post('/', dispatchOpsGuard, controller.create);
 router.get('/', scheduleViewerGuard, controller.list);
 router.get('/:id', scheduleViewerGuard, controller.getById);
-router.put('/:id', managerGuard, controller.update);
-router.delete('/:id', managerGuard, controller.delete);
+router.put('/:id', dispatchOpsGuard, controller.update);
+router.delete('/:id', dispatchOpsGuard, controller.delete);
 
 export default router;

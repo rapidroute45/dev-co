@@ -2,17 +2,23 @@ import { AppError } from '../../../../shared/errors/app-error';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { DriverLocationRepository } from '../../infrastructure/repositories/driverLocation.repository';
+import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
+import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 
 export class DeleteRouteUseCase {
   constructor(
     private routeRepo: IRouteRepository,
     private routeStopRepo: IRouteStopRepository,
-    private driverLocationRepo: DriverLocationRepository
+    private driverLocationRepo: DriverLocationRepository,
+    private scheduleRepo: IScheduleRepository
   ) {}
 
-  async execute(routeId: string) {
+  async execute(routeId: string, actor?: CityActor) {
     const route = await this.routeRepo.findById(routeId);
     if (!route) throw new AppError('Route not found.', 404);
+
+    const schedule = await this.scheduleRepo.findById(route.scheduleId);
+    if (schedule) enforceActorCity(actor, schedule.city);
 
     await this.routeStopRepo.deleteByRouteId(routeId);
     await this.driverLocationRepo.deleteByRouteId(routeId);

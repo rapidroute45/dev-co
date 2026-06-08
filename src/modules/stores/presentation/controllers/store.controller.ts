@@ -14,7 +14,7 @@ export class StoreController {
 
   create = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await this.createStoreUseCase.execute(req.body);
+      const data = await this.createStoreUseCase.execute(req.body, req.user);
       res.status(201).json({
         success: true,
         message: 'Store created successfully.',
@@ -28,7 +28,8 @@ export class StoreController {
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.listStoresUseCase.execute(
-        req.query as Record<string, string>
+        req.query as Record<string, string>,
+        req.user
       );
       res.status(200).json({
         success: true,
@@ -45,7 +46,7 @@ export class StoreController {
 
   getById = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await this.getStoreUseCase.execute(String(req.params.id));
+      const data = await this.getStoreUseCase.execute(String(req.params.id), req.user);
       res.status(200).json({ success: true, data });
     } catch (error) {
       next(error);
@@ -54,7 +55,11 @@ export class StoreController {
 
   update = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await this.updateStoreUseCase.execute(String(req.params.id), req.body);
+      const data = await this.updateStoreUseCase.execute(
+        String(req.params.id),
+        req.body,
+        req.user
+      );
       res.status(200).json({
         success: true,
         message: 'Store updated successfully.',

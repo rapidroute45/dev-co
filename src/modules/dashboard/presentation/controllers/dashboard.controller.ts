@@ -8,7 +8,8 @@ export class DashboardController {
   getStats = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.dashboardService.getStats(
-        req.query as Record<string, string>
+        req.query as Record<string, string>,
+        req.user
       );
       res.status(200).json({ success: true, data });
     } catch (error) {

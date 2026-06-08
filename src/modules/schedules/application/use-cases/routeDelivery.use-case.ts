@@ -16,7 +16,11 @@ import { DwellDetectionService } from '../services/dwellDetection.service';
 import { StopProximityService } from '../services/stopProximity.service';
 import { NotificationService } from '../../../notifications/application/services/notification.service';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
+import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { UserRole } from '../../../../shared/constants/roles';
+import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
+import { OpsVerificationStatus } from '../../../../shared/constants/opsVerification';
+import { computeOvertimeHours } from '../utils/routeOvertime';
 
 export class RouteDeliveryUseCase {
   constructor(
@@ -28,7 +32,8 @@ export class RouteDeliveryUseCase {
     private dwellDetection: DwellDetectionService,
     private stopProximity: StopProximityService,
     private notificationService: NotificationService,
-    private userRepo: IUserRepository
+    private userRepo: IUserRepository,
+    private scheduleRepo: IScheduleRepository
   ) {}
 
   private async assertDriverRoute(routeId: string, driverId: string) {
@@ -153,6 +158,42 @@ export class RouteDeliveryUseCase {
     }
   }
 
+  async completeStop(routeId: string, stopId: string, driverId: string) {
+    const route = await this.assertDriverRoute(routeId, driverId);
+    if (route.status !== RouteStatus.IN_PROGRESS) {
+      throw new AppError('Start the route before completing stops.', 400);
+    }
+
+    const stop = await this.routeStopRepo.findById(stopId);
+    if (!stop || stop.routeId !== routeId) {
+      throw new AppError('Stop not found.', 404);
+    }
+    if (stop.type === 'pickup') {
+      throw new AppError('Cannot complete pickup stop.', 400);
+    }
+    if (stop.status !== RouteStopStatus.PENDING) {
+      throw new AppError('Stop already finalized.', 400);
+    }
+
+    const updated = await this.routeStopRepo.updateById(stopId, {
+      status: RouteStopStatus.COMPLETED,
+      completedAt: new Date(),
+      deliveryPhotoUrl: null,
+      returnReason: null,
+      returnReasonCustom: null,
+      proximityEnteredAt: null,
+      proximityAnchorLat: null,
+      proximityAnchorLng: null,
+    });
+    if (!updated) throw new AppError('Failed to complete stop.', 500);
+
+    await this.routeRepo.update(routeId, {
+      deliveryVerification: DeliveryVerification.PENDING,
+    });
+
+    return updated;
+  }
+
   async returnStop(
     routeId: string,
     stopId: string,
@@ -196,10 +237,16 @@ export class RouteDeliveryUseCase {
   async setStopAccessCode(
     routeId: string,
     stopId: string,
-    accessCode: string
+    accessCode: string,
+    actor?: CityActor
   ) {
     const code = accessCode.trim();
     if (!code) throw new AppError('Access code is required.', 400);
+
+    const route = await this.routeRepo.findById(routeId);
+    if (!route) throw new AppError('Route not found.', 404);
+    const schedule = await this.scheduleRepo.findById(route.scheduleId);
+    if (schedule) enforceActorCity(actor, schedule.city);
 
     const stop = await this.routeStopRepo.findById(stopId);
     if (!stop || stop.routeId !== routeId) {
@@ -233,12 +280,21 @@ export class RouteDeliveryUseCase {
 
     const path = await this.driverLocationRepo.listByRoute(routeId);
     const totalMiles = sumLocationPathMiles(path);
+    const completedAt = new Date();
+    const overtimeHours = computeOvertimeHours({
+      arrivalMinutes: route.arrivalMinutes,
+      departureMinutes: route.departureMinutes,
+      startedAt: route.startedAt,
+      completedAt,
+    });
 
     const updated = await this.routeRepo.update(routeId, {
       status: RouteStatus.COMPLETED,
       deliveryVerification: DeliveryVerification.PENDING,
+      opsVerificationStatus: OpsVerificationStatus.PENDING,
       totalMiles: totalMiles > 0 ? totalMiles : route.mileage,
-      completedAt: new Date(),
+      completedAt,
+      overtimeHours,
     });
     if (!updated) throw new AppError('Failed to complete route.', 500);
 

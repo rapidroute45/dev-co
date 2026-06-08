@@ -14,6 +14,7 @@ import { notificationRoutes } from './modules/notifications';
 import { driverDocumentRoutes } from './modules/driver-documents';
 import { chatRoutes } from './modules/chat';
 import { payrollRoutes } from './modules/payroll';
+import { cityRoutes } from './modules/cities';
 import { AppError } from './shared/errors/app-error';
 import { UPLOADS_DIR } from './shared/upload/upload.config';
 
@@ -44,6 +45,7 @@ app.use('/api/v1/notifications', notificationRoutes);
 app.use('/api/v1/driver-documents', driverDocumentRoutes);
 app.use('/api/v1/chat', chatRoutes);
 app.use('/api/v1/payroll', payrollRoutes);
+app.use('/api/v1/cities', cityRoutes);
 
 app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
   if (err instanceof multer.MulterError) {

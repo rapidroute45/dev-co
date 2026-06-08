@@ -5,14 +5,17 @@ import { IStoreRepository } from '../../domain/interfaces/store-repository.inter
 import { CreateStoreDTO } from '../dto/create-store.dto';
 import { buildStoreIdPrefix, formatStoreId } from '../utils/generateStoreId';
 import { mapStoreToResponse } from '../mappers/storeResponse.mapper';
+import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 
 export class CreateStoreUseCase {
   constructor(private storeRepo: IStoreRepository) {}
 
-  async execute(dto: CreateStoreDTO) {
+  async execute(dto: CreateStoreDTO, actor?: CityActor) {
     const storeName = dto.storeName?.trim();
     const city = dto.city?.trim();
     const state = dto.state?.trim();
+
+    if (city) enforceActorCity(actor, city);
 
     if (!storeName || storeName.length < 2) {
       throw new AppError('Store name must be at least 2 characters.', 400);

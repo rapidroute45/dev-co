@@ -198,6 +198,168 @@ export class NotificationService {
     void this.sendPushIfSupported(recipients, title, message, payload);
   }
 
+  async notifyPayrollGenerated(input: {
+    recipientIds: string[];
+    teamId: string;
+    teamName: string;
+    billId: string;
+    totalAmount: number;
+    periodStart: string;
+    periodEnd: string;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      teamId: input.teamId,
+      teamName: input.teamName,
+      billId: input.billId,
+      totalAmount: input.totalAmount,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      deepLink: `/payroll/${input.billId}`,
+    };
+    const title = 'Payroll generated';
+    const message = `${input.teamName}: ${input.periodStart} – ${input.periodEnd} · $${input.totalAmount.toFixed(2)}`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.PAYROLL_GENERATED,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+    void this.sendPushIfSupported(recipients, title, message, payload);
+  }
+
+  async notifyPayrollSent(input: {
+    recipientIds: string[];
+    teamId: string;
+    teamName: string;
+    billId: string;
+    totalAmount: number;
+    periodStart: string;
+    periodEnd: string;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      teamId: input.teamId,
+      teamName: input.teamName,
+      billId: input.billId,
+      totalAmount: input.totalAmount,
+      periodStart: input.periodStart,
+      periodEnd: input.periodEnd,
+      deepLink: `/payroll/${input.billId}`,
+    };
+    const title = 'Payroll sent for review';
+    const message = `Review payroll for ${input.teamName} (${input.periodStart} – ${input.periodEnd}).`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.PAYROLL_SENT,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+    void this.sendPushIfSupported(recipients, title, message, payload);
+  }
+
+  async notifyPayrollApproved(input: {
+    recipientIds: string[];
+    teamId: string;
+    teamName: string;
+    billId: string;
+    totalAmount: number;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      teamId: input.teamId,
+      teamName: input.teamName,
+      billId: input.billId,
+      totalAmount: input.totalAmount,
+      deepLink: `/payroll/${input.billId}`,
+    };
+    const title = 'Payroll approved';
+    const message = `${input.teamName} payroll approved · $${input.totalAmount.toFixed(2)} ready for payment.`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.PAYROLL_APPROVED,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+    void this.sendPushIfSupported(recipients, title, message, payload);
+  }
+
+  async notifyRouteOpsTeamVerified(input: {
+    recipientIds: string[];
+    routeId: string;
+    scheduleId: string;
+    storeName: string;
+    city: string;
+    teamName: string;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      routeId: input.routeId,
+      scheduleId: input.scheduleId,
+      storeName: input.storeName,
+      city: input.city,
+      teamName: input.teamName,
+      deepLink: `/schedules/${input.scheduleId}`,
+    };
+    const title = 'Route ready for manager review';
+    const message = `${input.teamName} verified a completed route for ${input.storeName} (${input.city}).`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.ROUTE_OPS_REVIEW,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+    void this.sendPushIfSupported(recipients, title, message, payload);
+  }
+
   private async sendPushIfSupported(
     _recipientIds: string[],
     _title: string,

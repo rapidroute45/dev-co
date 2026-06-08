@@ -2,6 +2,7 @@ import { IUserRepository } from '../../domain/interfaces/user-repository.interfa
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
 import { AppError } from '../../../../shared/errors/app-error';
 import { mapUserToResponse } from '../../../users/application/mappers/userResponse.mapper';
+import { parsePhoneInput } from '../../../../shared/utils/phone';
 
 export interface UpdateProfileInput {
   fullName?: string;
@@ -26,8 +27,7 @@ export class UpdateProfileUseCase {
     }
 
     if (input.phone !== undefined) {
-      const phone = input.phone.trim();
-      updates.phone = phone || null;
+      updates.phone = parsePhoneInput(input.phone, { required: true });
     }
 
     if (Object.keys(updates).length === 0) {

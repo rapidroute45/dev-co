@@ -52,6 +52,21 @@ export class ScheduleRepository implements IScheduleRepository {
     return doc ? mapDoc(doc) : null;
   }
 
+  async findAllIdsByStoreId(storeId: string): Promise<string[]> {
+    const docs = await ScheduleModel.find({ storeId }).select('_id').lean();
+    return docs.map((d) => d._id.toString());
+  }
+
+  async findStoreIdByIds(scheduleIds: string[]): Promise<Map<string, string>> {
+    if (scheduleIds.length === 0) return new Map();
+    const docs = await ScheduleModel.find({ _id: { $in: scheduleIds } })
+      .select('_id storeId')
+      .lean();
+    return new Map(
+      docs.map((d) => [d._id.toString(), d.storeId.toString()])
+    );
+  }
+
   async findMany(filters?: ScheduleListFilters): Promise<{ items: Schedule[]; total: number }> {
     const query = buildQuery(filters);
     const page = Math.max(1, filters?.page ?? 1);

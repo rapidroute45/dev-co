@@ -2,6 +2,7 @@ import { AppError } from '../../../../shared/errors/app-error';
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
+import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 
 export class DeleteScheduleUseCase {
   constructor(
@@ -10,9 +11,10 @@ export class DeleteScheduleUseCase {
     private routeStopRepo: IRouteStopRepository
   ) {}
 
-  async execute(scheduleId: string) {
+  async execute(scheduleId: string, actor?: CityActor) {
     const schedule = await this.scheduleRepo.findById(scheduleId);
     if (!schedule) throw new AppError('Schedule not found.', 404);
+    enforceActorCity(actor, schedule.city);
 
     await this.routeStopRepo.deleteByScheduleId(scheduleId);
     await this.routeRepo.deleteManyByScheduleId(scheduleId);

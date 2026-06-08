@@ -24,6 +24,7 @@ function mapDoc(doc: {
   lng?: number | null;
   destinationLat?: number | null;
   destinationLng?: number | null;
+  placeId?: string | null;
   proximityAnchorLat?: number | null;
   proximityAnchorLng?: number | null;
   proximityEnteredAt?: Date | null;
@@ -46,6 +47,7 @@ function mapDoc(doc: {
     lng: doc.lng ?? null,
     destinationLat: doc.destinationLat ?? null,
     destinationLng: doc.destinationLng ?? null,
+    placeId: doc.placeId ?? null,
     proximityAnchorLat: doc.proximityAnchorLat ?? null,
     proximityAnchorLng: doc.proximityAnchorLng ?? null,
     proximityEnteredAt: doc.proximityEnteredAt ?? null,
@@ -89,6 +91,9 @@ export class RouteStopRepository implements IRouteStopRepository {
         name: s.name.trim(),
         address: s.address.trim(),
         accessCode: s.accessCode?.trim() || null,
+        destinationLat: s.destinationLat ?? null,
+        destinationLng: s.destinationLng ?? null,
+        placeId: s.placeId?.trim() || null,
         status: RouteStopStatus.PENDING,
       }))
     );
@@ -111,6 +116,7 @@ export class RouteStopRepository implements IRouteStopRepository {
         | 'lng'
         | 'destinationLat'
         | 'destinationLng'
+        | 'placeId'
         | 'proximityAnchorLat'
         | 'proximityAnchorLng'
         | 'proximityEnteredAt'

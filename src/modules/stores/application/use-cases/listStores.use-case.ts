@@ -1,12 +1,13 @@
 import { IStoreRepository, StoreListFilters } from '../../domain/interfaces/store-repository.interface';
 import { mapStoreToResponse } from '../mappers/storeResponse.mapper';
+import { CityActor, mergeCityFilter } from '../../../../shared/services/cityScope.service';
 
 export class ListStoresUseCase {
   constructor(private storeRepo: IStoreRepository) {}
 
-  async execute(query: Record<string, string>) {
+  async execute(query: Record<string, string>, actor?: CityActor) {
     const filters: StoreListFilters = {
-      city: query.city,
+      city: mergeCityFilter(actor, query.city),
       state: query.state,
       search: query.search,
       page: query.page ? Number(query.page) : 1,

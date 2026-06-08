@@ -2,28 +2,34 @@ import bcrypt from 'bcryptjs';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
 import { TeamAssignmentService } from '../../../teams/application/services/teamAssignment.service';
+import { CityAssignmentService } from '../services/cityAssignment.service';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 import { canAssignRole } from '../../../../shared/constants/assignableRoles';
-import { roleRequiresTeam } from '../../../../shared/constants/roleRequirements';
+import { roleRequiresCity, roleRequiresTeam } from '../../../../shared/constants/roleRequirements';
 import { AppError } from '../../../../shared/errors/app-error';
 import { mapUserToResponse, UserTeamBrief } from '../mappers/userResponse.mapper';
+import { parsePhoneInput } from '../../../../shared/utils/phone';
 
 export interface UpdateUserDTO {
   fullName?: string | null;
+  phone?: string | null;
   role?: UserRole;
   status?: UserStatus;
   teamId?: string | null;
+  assignedCity?: string | null;
   password?: string;
 }
 
 export class UpdateUserUseCase {
   private teamAssignment: TeamAssignmentService;
+  private cityAssignment: CityAssignmentService;
 
   constructor(
     private userRepo: IUserRepository,
     private teamRepo: ITeamRepository
   ) {
     this.teamAssignment = new TeamAssignmentService(userRepo, teamRepo);
+    this.cityAssignment = new CityAssignmentService(userRepo);
   }
 
   private async loadTeamBrief(teamId: string | null): Promise<UserTeamBrief> {
@@ -54,6 +60,10 @@ export class UpdateUserUseCase {
     }
 
     const passwordHash = dto.password ? await bcrypt.hash(dto.password, 10) : undefined;
+    const phonePatch =
+      dto.phone !== undefined
+        ? parsePhoneInput(dto.phone, { required: false })
+        : undefined;
 
     if (nextRole) {
       const roleChanged = dto.role !== undefined && dto.role !== user.role;
@@ -77,11 +87,21 @@ export class UpdateUserUseCase {
 
       const resolvedTeamId = roleRequiresTeam(nextRole) ? (team?.id ?? null) : null;
 
+      const assignedCityInput =
+        dto.assignedCity !== undefined ? dto.assignedCity : user.assignedCity;
+      const assignedCity = await this.cityAssignment.validateAndResolveCity({
+        userId,
+        assignedRole: nextRole,
+        assignedCity: assignedCityInput,
+      });
+
       const updated = await this.userRepo.update(userId, {
         fullName: dto.fullName,
+        phone: phonePatch,
         role: nextRole,
         status: nextStatus,
         teamId: resolvedTeamId,
+        assignedCity: assignedCity ?? null,
         passwordHash,
       });
 
@@ -94,18 +114,39 @@ export class UpdateUserUseCase {
         userId,
         teamId: dto.teamId!,
       });
+      const assignedCity =
+        dto.assignedCity !== undefined && user.role && roleRequiresCity(user.role)
+          ? await this.cityAssignment.validateAndResolveCity({
+              userId,
+              assignedRole: user.role,
+              assignedCity: dto.assignedCity,
+            })
+          : undefined;
       const updated = await this.userRepo.update(userId, {
         fullName: dto.fullName,
+        phone: phonePatch,
         status: nextStatus,
+        assignedCity,
         passwordHash,
       });
       if (!updated) throw new AppError('Failed to update user', 500);
       return mapUserToResponse(updated, team);
     }
 
+    const assignedCity =
+      dto.assignedCity !== undefined && user.role && roleRequiresCity(user.role)
+        ? await this.cityAssignment.validateAndResolveCity({
+            userId,
+            assignedRole: user.role,
+            assignedCity: dto.assignedCity,
+          })
+        : undefined;
+
     const updated = await this.userRepo.update(userId, {
       fullName: dto.fullName,
+      phone: phonePatch,
       status: nextStatus,
+      assignedCity,
       passwordHash,
     });
 

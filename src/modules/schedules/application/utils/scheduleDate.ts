@@ -37,3 +37,10 @@ export function parseFutureScheduleDate(input: string): Date {
 export function formatScheduleDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
+
+/** Latest YYYY-MM-DD allowed for payroll period end (UTC today + 1 day for client TZ ahead of UTC). */
+export function maxPayrollPeriodEndDate(): string {
+  const today = parseScheduleDate(formatScheduleDate(new Date()));
+  today.setUTCDate(today.getUTCDate() + 1);
+  return formatScheduleDate(today);
+}

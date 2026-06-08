@@ -1,3 +1,5 @@
+import { RouteCategory } from '../../../../shared/constants/routeCategories';
+
 export enum PayrollStatus {
   /** Ops generated from completed routes; not sent to team lead yet. */
   DRAFT = 'draft',
@@ -34,7 +36,13 @@ export interface PayrollRouteLine {
   location: string | null;
   scheduleDate: Date;
   completedAt: Date | null;
+  /** Final pay for this route (after adjustment). */
   rate: number;
+  routeCategory: RouteCategory;
+  defaultRate: number;
+  originalAmount: number;
+  hasAdjustment?: boolean;
+  adjustmentReason?: string | null;
 }
 
 /** Per-driver roll-up: base pay from routes + optional bonus/deduction. */
@@ -61,8 +69,14 @@ export interface PayrollBillProps {
   standardRate: number;
   lineItems: PayrollDriverLine[];
   totalAmount: number;
+  subtotal?: number;
+  adjustmentsTotal?: number;
+  bonusesTotal?: number;
+  deductionsTotal?: number;
+  overtimeTotal?: number;
   /** Ops internal note. */
   note?: string | null;
+  teamLeadAcknowledgedAt?: Date | null;
   createdBy: string;
   createdByName: string;
   sentToTeamLeadAt?: Date | null;
@@ -108,6 +122,24 @@ export class PayrollBill {
   }
   get totalAmount() {
     return this.props.totalAmount;
+  }
+  get subtotal() {
+    return this.props.subtotal ?? this.props.totalAmount;
+  }
+  get adjustmentsTotal() {
+    return this.props.adjustmentsTotal ?? 0;
+  }
+  get bonusesTotal() {
+    return this.props.bonusesTotal ?? 0;
+  }
+  get deductionsTotal() {
+    return this.props.deductionsTotal ?? 0;
+  }
+  get overtimeTotal() {
+    return this.props.overtimeTotal ?? 0;
+  }
+  get teamLeadAcknowledgedAt() {
+    return this.props.teamLeadAcknowledgedAt ?? null;
   }
   get note() {
     return this.props.note ?? null;

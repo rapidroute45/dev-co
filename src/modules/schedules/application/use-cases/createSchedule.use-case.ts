@@ -8,6 +8,7 @@ import { CreateScheduleDTO } from '../dto/create-schedule.dto';
 import { parseFutureScheduleDate } from '../utils/scheduleDate';
 import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
+import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 
 export class CreateScheduleUseCase {
   constructor(
@@ -15,11 +16,12 @@ export class CreateScheduleUseCase {
     private storeRepo: IStoreRepository
   ) {}
 
-  async execute(dto: CreateScheduleDTO, createdByUserId: string) {
+  async execute(dto: CreateScheduleDTO, createdByUserId: string, actor?: CityActor) {
     const city = dto.city?.trim();
     const state = dto.state?.trim();
     if (!city) throw new AppError('City is required.', 400);
     if (!state) throw new AppError('State is required.', 400);
+    enforceActorCity(actor, city);
 
     const date = parseFutureScheduleDate(dto.date);
 

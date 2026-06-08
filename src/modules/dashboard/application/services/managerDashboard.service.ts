@@ -1,15 +1,21 @@
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
 import { IRouteRepository } from '../../../schedules/domain/interfaces/route-repository.interface';
+import { IScheduleRepository } from '../../../schedules/domain/interfaces/schedule-repository.interface';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 import { parseScheduleDate, formatScheduleDate } from '../../../schedules/application/utils/scheduleDate';
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
+import {
+  CityActor,
+  resolveActorCityFilter,
+} from '../../../../shared/services/cityScope.service';
 
 const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER, UserRole.TEAM_LEAD];
 export class ManagerDashboardService {
   constructor(
     private routeRepo: IRouteRepository,
+    private scheduleRepo: IScheduleRepository,
     private userRepo: IUserRepository,
     private teamRepo: ITeamRepository
   ) {}
@@ -24,9 +30,34 @@ export class ManagerDashboardService {
     return parseScheduleDate(raw);
   }
 
-  async getStats(query: Record<string, string>) {
+  async getStats(query: Record<string, string>, actor?: CityActor) {
     const scheduleDate = this.resolveDate(query);
     const date = formatScheduleDate(scheduleDate);
+    const cityScope = resolveActorCityFilter(actor);
+
+    if (cityScope) {
+      const { items: schedules } = await this.scheduleRepo.findMany({
+        date,
+        city: cityScope,
+        page: 1,
+        limit: 500,
+      });
+      const scheduleIds = schedules.map((s) => s.id!).filter(Boolean);
+
+      const [todayRoutes, completedRoutes, availableDrivers] = await Promise.all([
+        this.routeRepo.countByScheduleIds(scheduleIds, scheduleDate),
+        this.routeRepo.countByScheduleIds(scheduleIds, scheduleDate, RouteStatus.COMPLETED),
+        this.countAvailableDrivers(scheduleDate),
+      ]);
+
+      return {
+        date,
+        city: cityScope,
+        todayRoutes,
+        availableDrivers,
+        completedRoutes,
+      };
+    }
 
     const [todayRoutes, completedRoutes, availableDrivers] = await Promise.all([
       this.routeRepo.countByScheduleDate(scheduleDate),

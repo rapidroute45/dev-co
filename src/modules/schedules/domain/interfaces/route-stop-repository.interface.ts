@@ -18,6 +18,7 @@ export type RouteStopRecord = {
   lng: number | null;
   destinationLat: number | null;
   destinationLng: number | null;
+  placeId: string | null;
   proximityAnchorLat: number | null;
   proximityAnchorLng: number | null;
   proximityEnteredAt: Date | null;
@@ -29,6 +30,9 @@ export type RouteStopInput = {
   name: string;
   address: string;
   accessCode?: string | null;
+  destinationLat?: number | null;
+  destinationLng?: number | null;
+  placeId?: string | null;
 };
 
 export interface IRouteStopRepository {
@@ -57,6 +61,7 @@ export interface IRouteStopRepository {
         | 'lng'
         | 'destinationLat'
         | 'destinationLng'
+        | 'placeId'
         | 'proximityAnchorLat'
         | 'proximityAnchorLng'
         | 'proximityEnteredAt'

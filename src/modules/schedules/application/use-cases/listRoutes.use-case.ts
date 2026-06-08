@@ -10,19 +10,28 @@ import { mapRouteToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { formatScheduleDate } from '../utils/scheduleDate';
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
+import { mergeCityFilter, normalizeCity } from '../../../../shared/services/cityScope.service';
+import {
+  DispatchTeamAttributionService,
+  shouldAttachDispatchTeamAttribution,
+} from '../../../../shared/services/dispatchTeamAttribution.service';
 
 export class ListRoutesUseCase {
+  private dispatchTeamAttribution: DispatchTeamAttributionService;
+
   constructor(
     private routeRepo: IRouteRepository,
     private scheduleRepo: IScheduleRepository,
     private storeRepo: IStoreRepository,
     private userRepo: IUserRepository,
     private teamRepo: ITeamRepository
-  ) {}
+  ) {
+    this.dispatchTeamAttribution = new DispatchTeamAttributionService(userRepo);
+  }
 
   async execute(
     query: Record<string, string>,
-    actor?: { role: UserRole | null; teamId?: string | null }
+    actor?: { role: UserRole | null; teamId?: string | null; assignedCity?: string | null }
   ) {
     const date = query.date?.trim();
     if (!date) {
@@ -47,7 +56,7 @@ export class ListRoutesUseCase {
       filters.teamId = actor.teamId;
     }
 
-    const city = query.city?.trim();
+    const city = mergeCityFilter(actor, query.city);
     const state = query.state?.trim();
     const storeId = query.storeId?.trim();
 
@@ -74,6 +83,8 @@ export class ListRoutesUseCase {
 
     const { items: routes, total } = await this.routeRepo.findMany(filters);
 
+    const attachDispatchTeam = shouldAttachDispatchTeamAttribution(actor?.role);
+
     const scheduleIds = [...new Set(routes.map((r) => r.scheduleId))];
     const schedules = await Promise.all(
       scheduleIds.map((id) => this.scheduleRepo.findById(id))
@@ -81,6 +92,12 @@ export class ListRoutesUseCase {
     const scheduleById = new Map(
       schedules.filter(Boolean).map((s) => [s!.id!, s!])
     );
+
+    const dispatchTeamByCity = attachDispatchTeam
+      ? await this.dispatchTeamAttribution.mapForCities(
+          schedules.filter(Boolean).map((s) => s!.city)
+        )
+      : null;
 
     const storeIds = [
       ...new Set(
@@ -118,6 +135,9 @@ export class ListRoutesUseCase {
                 state: schedule.state,
                 storeId: schedule.storeId,
                 store,
+                dispatchTeam: dispatchTeamByCity
+                  ? dispatchTeamByCity.get(normalizeCity(schedule.city)) ?? null
+                  : null,
               }
             : null,
         };

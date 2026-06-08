@@ -12,12 +12,12 @@ import { resolveDisplayName } from '../../../../shared/utils/displayName';
 import { AppError } from '../../../../shared/errors/app-error';
 import { ScheduleActivationService } from '../services/scheduleActivation.service';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
-import {
-  buildRouteStopsForSave,
-  parseStopDetails,
-} from '../utils/routeStops';
+import { parsePickupDetail, parseStopDetails } from '../utils/routeStops';
+import { buildGeocodedRouteStops } from '../services/routeStopGeo.service';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 import { AddressAccessCodeRepository } from '../../infrastructure/repositories/addressAccessCode.repository';
+import { parseRouteCategoryInput } from '../../../../shared/utils/routeCategoryAccess';
+import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 
 export class CreateRouteUseCase {
   constructor(
@@ -32,8 +32,9 @@ export class CreateRouteUseCase {
     private addressCodeRepo: AddressAccessCodeRepository
   ) {}
 
-  async execute(dto: CreateRouteDTO, assignedByUserId: string) {
+  async execute(dto: CreateRouteDTO, assignedByUserId: string, actor?: CityActor) {
     const schedule = await this.routeValidation.assertScheduleExists(dto.scheduleId);
+    enforceActorCity(actor, schedule.city);
     const team = await this.routeValidation.assertTeamExists(dto.teamId);
 
     const times = this.routeValidation.parseAndValidateTimes(
@@ -74,8 +75,9 @@ export class CreateRouteUseCase {
       status = RouteStatus.PENDING;
     }
 
-    const stopDetails = parseStopDetails(dto.stopDetails);
-    const dropoffCount = stopDetails?.length ?? dto.stops ?? null;
+    const stopDetails = parseStopDetails(dto.stopDetails) ?? [];
+    const pickupDetail = parsePickupDetail(dto.pickupDetail);
+    const dropoffCount = stopDetails.length > 0 ? stopDetails.length : dto.stops ?? null;
 
     const store = await this.storeRepo.findById(schedule.storeId);
     if (!store) throw new AppError('Schedule store not found.', 404);
@@ -86,6 +88,7 @@ export class CreateRouteUseCase {
       teamId: dto.teamId,
       driverId: dto.driverId ?? null,
       routeName: dto.routeName?.trim() || null,
+      routeCategory: parseRouteCategoryInput(dto.routeCategory),
       location: dto.location?.trim() || null,
       vehicleType: dto.vehicleType?.trim() || null,
       mileage: dto.mileage ?? null,
@@ -101,26 +104,31 @@ export class CreateRouteUseCase {
 
     const saved = await this.routeRepo.save(route);
 
-    if (stopDetails && stopDetails.length > 0) {
-      const enrichedDetails = await Promise.all(
-        stopDetails.map(async (d) => ({
-          ...d,
-          accessCode:
-            d.accessCode ??
-            (await this.addressCodeRepo.findByAddress(d.address)) ??
-            undefined,
-        }))
-      );
-      const stopRows = buildRouteStopsForSave(store, enrichedDetails);
-      await this.routeStopRepo.replaceForRoute(saved.id!, dto.scheduleId, stopRows);
-      for (const d of enrichedDetails) {
-        if (d.accessCode) {
-          await this.addressCodeRepo.upsert(d.address, d.accessCode, d.name);
-        }
+    const enrichedDropoffs = await Promise.all(
+      stopDetails.map(async (d) => ({
+        ...d,
+        accessCode:
+          d.accessCode ??
+          (await this.addressCodeRepo.findByAddress(d.address)) ??
+          undefined,
+      }))
+    );
+
+    const stopRows = await buildGeocodedRouteStops({
+      store,
+      pickup: pickupDetail,
+      dropoffs: enrichedDropoffs,
+      geocodeContext: {
+        city: schedule.city,
+        state: schedule.state,
+        country: 'Pakistan',
+      },
+    });
+    await this.routeStopRepo.replaceForRoute(saved.id!, dto.scheduleId, stopRows);
+    for (const d of enrichedDropoffs) {
+      if (d.accessCode) {
+        await this.addressCodeRepo.upsert(d.address, d.accessCode, d.name);
       }
-    } else {
-      const pickupOnly = buildRouteStopsForSave(store, []);
-      await this.routeStopRepo.replaceForRoute(saved.id!, dto.scheduleId, pickupOnly);
     }
 
     await this.scheduleActivation.syncFromRoutes(dto.scheduleId);

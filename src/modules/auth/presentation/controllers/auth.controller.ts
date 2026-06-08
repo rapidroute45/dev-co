@@ -26,6 +26,7 @@ export class AuthController {
           id: result.id,
           email: result.email,
           fullName: result.fullName,
+          phone: result.phone,
           status: result.status,
         },
       });

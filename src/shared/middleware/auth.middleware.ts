@@ -10,6 +10,7 @@ export interface AuthenticatedUser {
   role: UserRole | null;
   status: UserStatus;
   teamId?: string | null;
+  assignedCity?: string | null;
 }
 
 declare global {

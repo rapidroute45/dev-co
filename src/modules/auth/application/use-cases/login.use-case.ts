@@ -27,6 +27,7 @@ export class LoginUseCase {
         role: user.role,
         status: user.status,
         teamId: user.teamId ?? null,
+        assignedCity: user.assignedCity ?? null,
       },
       ENV.JWT_SECRET,
       { expiresIn: ENV.JWT_ACCESS_EXPIRES_IN } as jwt.SignOptions
@@ -37,9 +38,12 @@ export class LoginUseCase {
       user: {
         id: user.id,
         email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
         role: user.role,
         status: user.status,
         teamId: user.teamId ?? null,
+        assignedCity: user.assignedCity ?? null,
       },
     };
   }

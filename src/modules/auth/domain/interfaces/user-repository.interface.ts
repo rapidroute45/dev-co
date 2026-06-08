@@ -6,6 +6,7 @@ export interface ApproveUserUpdate {
   role: UserRole;
   status: UserStatus;
   teamId?: string | null;
+  assignedCity?: string | null;
 }
 
 export interface UserListFilters {
@@ -23,6 +24,7 @@ export interface UserUpdateData {
   role?: UserRole | null;
   status?: UserStatus;
   teamId?: string | null;
+  assignedCity?: string | null;
   passwordHash?: string;
 }
 
@@ -35,6 +37,7 @@ export interface IUserRepository {
   findActiveDrivers(): Promise<User[]>;
   findManyByStatus(status: UserStatus): Promise<User[]>;
   findManyByTeamId(teamId: string): Promise<User[]>;
+  findActiveDispatchTeamByCity(city: string): Promise<User | null>;
   save(user: User): Promise<User>;
   updateAfterApproval(update: ApproveUserUpdate): Promise<User | null>;
   update(userId: string, data: UserUpdateData): Promise<User | null>;

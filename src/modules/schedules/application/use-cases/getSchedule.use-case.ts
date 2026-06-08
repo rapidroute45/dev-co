@@ -8,9 +8,16 @@ import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
 import { UserRole } from '../../../../shared/constants/roles';
+import { enforceActorCity } from '../../../../shared/services/cityScope.service';
+import {
+  DispatchTeamAttributionService,
+  shouldAttachDispatchTeamAttribution,
+} from '../../../../shared/services/dispatchTeamAttribution.service';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 
 export class GetScheduleUseCase {
+  private dispatchTeamAttribution: DispatchTeamAttributionService;
+
   constructor(
     private scheduleRepo: IScheduleRepository,
     private storeRepo: IStoreRepository,
@@ -18,11 +25,17 @@ export class GetScheduleUseCase {
     private userRepo: IUserRepository,
     private teamRepo: ITeamRepository,
     private routeStopEnrichment: RouteStopEnrichmentService
-  ) {}
+  ) {
+    this.dispatchTeamAttribution = new DispatchTeamAttributionService(userRepo);
+  }
 
-  async execute(scheduleId: string, actor?: { id: string; role: UserRole | null }) {
+  async execute(
+    scheduleId: string,
+    actor?: { id: string; role: UserRole | null; assignedCity?: string | null }
+  ) {
     const schedule = await this.scheduleRepo.findById(scheduleId);
     if (!schedule) throw new AppError('Schedule not found.', 404);
+    enforceActorCity(actor, schedule.city);
 
     const store = await this.storeRepo.findById(schedule.storeId);
     let routes = await this.routeRepo.findManyByScheduleId(scheduleId);
@@ -56,10 +69,15 @@ export class GetScheduleUseCase {
       }
     );
 
+    const dispatchTeam = shouldAttachDispatchTeamAttribution(actor?.role)
+      ? await this.dispatchTeamAttribution.findByCity(schedule.city)
+      : undefined;
+
     return mapScheduleToResponse(
       schedule,
       store ? mapStoreToResponse(store) : null,
-      routeResponses
+      routeResponses,
+      { dispatchTeam }
     );
   }
 }
