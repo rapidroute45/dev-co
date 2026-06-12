@@ -262,3 +262,24 @@ export function emitDriverLocationUpdated(payload: DriverLocationUpdatedPayload)
   io.to(roomTrackingCityName(payload.city)).emit('driver:location', payload);
   io.to(trackingCityRoom(payload.city, payload.state)).emit('driver:location', payload);
 }
+
+export type DriverStationaryAlertPayload = {
+  routeId: string;
+  scheduleId: string;
+  driverId: string;
+  driverName: string;
+  dwellMinutes: number;
+  lat: number;
+  lng: number;
+  city: string;
+  state: string;
+  routeName: string | null;
+};
+
+export function emitDriverStationaryAlert(payload: DriverStationaryAlertPayload) {
+  if (!io) return;
+
+  io.to(roomDispatchOpsTracking()).emit('driver:stationary', payload);
+  io.to(roomTrackingCityName(payload.city)).emit('driver:stationary', payload);
+  io.to(trackingCityRoom(payload.city, payload.state)).emit('driver:stationary', payload);
+}

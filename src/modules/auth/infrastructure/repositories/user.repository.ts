@@ -101,15 +101,20 @@ export class UserRepository implements IUserRepository {
   }
 
   async findActiveDispatchTeamByCity(city: string): Promise<User | null> {
+    const members = await this.findActiveDispatchTeamMembersByCity(city);
+    return members[0] ?? null;
+  }
+
+  async findActiveDispatchTeamMembersByCity(city: string): Promise<User[]> {
     const trimmed = city.trim();
-    if (!trimmed) return null;
+    if (!trimmed) return [];
     const regex = new RegExp(`^${trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
-    const doc = await UserModel.findOne({
+    const docs = await UserModel.find({
       role: UserRole.DISPATCH_TEAM,
       status: UserStatus.ACTIVE,
       $or: [{ assignedCity: { $regex: regex } }, { assignedCities: { $regex: regex } }],
-    });
-    return doc ? mapDoc(doc) : null;
+    }).sort({ fullName: 1, email: 1 });
+    return docs.map(mapDoc);
   }
 
   async save(user: User): Promise<User> {

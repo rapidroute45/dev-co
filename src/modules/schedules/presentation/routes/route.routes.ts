@@ -56,7 +56,9 @@ const dwellDetection = new DwellDetectionService(
   routeDwellSessionRepo,
   teamRepo,
   userRepo,
-  notificationService
+  notificationService,
+  routeRepo,
+  scheduleRepo
 );
 
 const routeValidation = new RouteValidationService(

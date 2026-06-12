@@ -40,6 +40,7 @@ export interface IUserRepository {
   findManyByStatus(status: UserStatus): Promise<User[]>;
   findManyByTeamId(teamId: string): Promise<User[]>;
   findActiveDispatchTeamByCity(city: string): Promise<User | null>;
+  findActiveDispatchTeamMembersByCity(city: string): Promise<User[]>;
   save(user: User): Promise<User>;
   updateAfterApproval(update: ApproveUserUpdate): Promise<User | null>;
   update(userId: string, data: UserUpdateData): Promise<User | null>;
