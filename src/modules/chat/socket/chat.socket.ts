@@ -5,6 +5,8 @@ import { ENV } from '../../../config/env';
 import { AuthenticatedUser } from '../../../shared/middleware/auth.middleware';
 import { UserRole } from '../../../shared/constants/roles';
 import { ChatService } from '../application/services/chat.service';
+import { getActorAssignedCities, normalizeCity } from '../../../shared/services/cityScope.service';
+import { trackingCityRoom } from '../../../shared/utils/trackingCityKey';
 
 export type ChatSocketUser = AuthenticatedUser;
 
@@ -26,6 +28,14 @@ function roomForUser(userId: string) {
 
 function roomManagers() {
   return 'role:managers';
+}
+
+function roomDispatchOpsTracking() {
+  return 'tracking:dispatch-ops';
+}
+
+function roomTrackingCityName(city: string) {
+  return `tracking:city:${normalizeCity(city)}`;
 }
 
 export function initChatSocket(httpServer: HttpServer, chatService: ChatService) {
@@ -57,6 +67,13 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
 
     if (user.role && MANAGER_ROLES.includes(user.role)) {
       void socket.join(roomManagers());
+      void socket.join(roomDispatchOpsTracking());
+    }
+
+    if (user.role === UserRole.DISPATCH_TEAM) {
+      for (const city of getActorAssignedCities(user)) {
+        void socket.join(roomTrackingCityName(city));
+      }
     }
 
     void chatService.listConversationIdsForUser(user.id, user.role).then((ids) => {
@@ -188,4 +205,60 @@ export function emitDeliveryPhotoAlert(payload: {
     conversationId: payload.conversationId,
     message: payload.message,
   });
+}
+
+export type RouteUpdatedAction = 'created' | 'updated' | 'deleted';
+
+export function emitRouteUpdated(payload: {
+  routeId: string;
+  scheduleId: string;
+  action: RouteUpdatedAction;
+  driverIds?: Array<string | null | undefined>;
+}) {
+  if (!io) return;
+
+  const event = {
+    routeId: payload.routeId,
+    scheduleId: payload.scheduleId,
+    action: payload.action,
+    updatedAt: new Date().toISOString(),
+  };
+
+  const driverIds = [...new Set(payload.driverIds?.filter(Boolean).map(String) ?? [])];
+  for (const driverId of driverIds) {
+    io.to(roomForUser(driverId)).emit('route:updated', event);
+  }
+
+  io.to(roomDispatchOpsTracking()).emit('route:updated', event);
+}
+
+export type DriverLocationUpdatedPayload = {
+  routeId: string;
+  scheduleId: string;
+  driverId: string;
+  driverName: string;
+  routeName: string | null;
+  lat: number;
+  lng: number;
+  recordedAt: string;
+  status: string;
+  city: string;
+  state: string;
+  storeName?: string | null;
+  progress?: {
+    totalDropoffs: number;
+    completedDropoffs: number;
+    returnedDropoffs: number;
+    pendingDropoffs: number;
+  };
+  autoCompletedStops?: { stopId: string; stopName: string }[];
+  routeCompleted?: boolean;
+};
+
+export function emitDriverLocationUpdated(payload: DriverLocationUpdatedPayload) {
+  if (!io) return;
+
+  io.to(roomDispatchOpsTracking()).emit('driver:location', payload);
+  io.to(roomTrackingCityName(payload.city)).emit('driver:location', payload);
+  io.to(trackingCityRoom(payload.city, payload.state)).emit('driver:location', payload);
 }

@@ -3,6 +3,7 @@ import { ScheduleModel } from '../../../schedules/infrastructure/models/schedule
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 import { normalizeCity } from '../../../../shared/services/cityScope.service';
+import { resolveUserAssignedCities } from '../../../users/application/mappers/userResponse.mapper';
 
 export class ListCitiesUseCase {
   constructor(private userRepo = new UserRepository()) {}
@@ -24,13 +25,14 @@ export class ListCitiesUseCase {
 
     const assignedByCity = new Map<string, { userId: string; email: string; fullName: string | null }>();
     for (const member of dispatchTeam) {
-      const city = member.assignedCity?.trim();
-      if (!city || !member.id) continue;
-      assignedByCity.set(normalizeCity(city), {
-        userId: member.id,
-        email: member.email,
-        fullName: member.fullName,
-      });
+      for (const city of resolveUserAssignedCities(member)) {
+        if (!member.id) continue;
+        assignedByCity.set(normalizeCity(city), {
+          userId: member.id,
+          email: member.email,
+          fullName: member.fullName,
+        });
+      }
     }
 
     const cities = [...cityMap.entries()]

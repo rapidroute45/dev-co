@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { dispatchOpsGuard } from '../../../../shared/middleware/dispatchOpsGuard';
 import { managerGuard } from '../../../../shared/middleware/managerGuard';
 import { scheduleViewerGuard } from '../../../../shared/middleware/scheduleViewerGuard';
+import { trackingViewerGuard } from '../../../../shared/middleware/trackingViewerGuard';
 import { driverGuard } from '../../../../shared/middleware/driverGuard';
 import { teamLeadGuard } from '../../../../shared/middleware/teamLeadGuard';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
@@ -32,7 +33,11 @@ import { ListRoutesUseCase } from '../../application/use-cases/listRoutes.use-ca
 import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.use-case';
 import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
+import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
 import { RouteController } from '../controllers/route.controller';
+import { TeamLeadScheduleAlertRepository } from '../../infrastructure/repositories/teamLeadScheduleAlert.repository';
+import { TeamLeadScheduleAlertService } from '../../application/services/teamLeadScheduleAlert.service';
+
 const router = Router();
 
 const scheduleRepo = new ScheduleRepository();
@@ -61,6 +66,14 @@ const routeValidation = new RouteValidationService(
   routeRepo
 );
 const scheduleActivation = new ScheduleActivationService(scheduleRepo, routeRepo);
+const teamLeadAlertRepo = new TeamLeadScheduleAlertRepository();
+const teamLeadAlertService = new TeamLeadScheduleAlertService(
+  teamLeadAlertRepo,
+  scheduleRepo,
+  routeRepo,
+  storeRepo,
+  teamRepo
+);
 const stopProximity = new StopProximityService(routeStopRepo, routeRepo, scheduleRepo);
 const routeDelivery = new RouteDeliveryUseCase(
   routeRepo,
@@ -72,7 +85,18 @@ const routeDelivery = new RouteDeliveryUseCase(
   stopProximity,
   notificationService,
   userRepo,
-  scheduleRepo
+  scheduleRepo,
+  storeRepo
+);
+
+const listLiveRoutes = new ListLiveRoutesUseCase(
+  routeRepo,
+  routeStopRepo,
+  scheduleRepo,
+  storeRepo,
+  userRepo,
+  teamRepo,
+  routeStopEnrichment
 );
 
 const controller = new RouteController(
@@ -85,7 +109,8 @@ const controller = new RouteController(
     teamRepo,
     scheduleActivation,
     routeStopEnrichment,
-    addressCodeRepo
+    addressCodeRepo,
+    teamLeadAlertService
   ),
   new GetRouteUseCase(routeRepo, scheduleRepo, storeRepo, userRepo, teamRepo, routeStopEnrichment),
   new UpdateRouteUseCase(
@@ -98,9 +123,16 @@ const controller = new RouteController(
     scheduleActivation,
     routeStopEnrichment,
     addressCodeRepo,
-    userRepo
+    userRepo,
+    teamLeadAlertService
   ),
-  new DeleteRouteUseCase(routeRepo, routeStopRepo, driverLocationRepo, scheduleRepo),
+  new DeleteRouteUseCase(
+    routeRepo,
+    routeStopRepo,
+    driverLocationRepo,
+    scheduleRepo,
+    teamLeadAlertService
+  ),
   new AcceptRouteUseCase(
     routeRepo,
     scheduleRepo,
@@ -118,7 +150,14 @@ const controller = new RouteController(
     teamRepo,
     routeStopEnrichment
   ),
-  new ListRoutesUseCase(routeRepo, scheduleRepo, storeRepo, userRepo, teamRepo),
+  new ListRoutesUseCase(
+    routeRepo,
+    scheduleRepo,
+    storeRepo,
+    userRepo,
+    teamRepo,
+    teamLeadAlertService
+  ),
   new ListMyRoutesUseCase(
     routeRepo,
     scheduleRepo,
@@ -134,7 +173,8 @@ const controller = new RouteController(
     teamRepo,
     routeStopEnrichment
   ),
-  routeDelivery
+  routeDelivery,
+  listLiveRoutes
 );
 
 router.get('/offers/pending', driverGuard, controller.listPendingOffers);
@@ -142,7 +182,8 @@ router.get('/me', driverGuard, controller.listMyRoutes);
 router.get('/me/completed', driverGuard, controller.listMyCompletedRoutes);
 router.get('/', scheduleViewerGuard, controller.list);
 router.post('/', dispatchOpsGuard, controller.create);
-router.get('/:id/tracking', scheduleViewerGuard, controller.getTracking);
+router.get('/live', trackingViewerGuard, controller.listLive);
+router.get('/:id/tracking', trackingViewerGuard, controller.getTracking);
 router.get('/:id', scheduleViewerGuard, controller.getById);
 router.put('/:id', dispatchOpsGuard, controller.update);
 router.post('/:id/assign-driver', teamLeadGuard, controller.assignDriver);

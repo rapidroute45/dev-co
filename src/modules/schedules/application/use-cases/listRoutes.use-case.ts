@@ -10,11 +10,12 @@ import { mapRouteToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { formatScheduleDate } from '../utils/scheduleDate';
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
-import { mergeCityFilter, normalizeCity } from '../../../../shared/services/cityScope.service';
+import { mergeCityListFilter, normalizeCity } from '../../../../shared/services/cityScope.service';
 import {
   DispatchTeamAttributionService,
   shouldAttachDispatchTeamAttribution,
 } from '../../../../shared/services/dispatchTeamAttribution.service';
+import { TeamLeadScheduleAlertService } from '../services/teamLeadScheduleAlert.service';
 
 export class ListRoutesUseCase {
   private dispatchTeamAttribution: DispatchTeamAttributionService;
@@ -24,14 +25,21 @@ export class ListRoutesUseCase {
     private scheduleRepo: IScheduleRepository,
     private storeRepo: IStoreRepository,
     private userRepo: IUserRepository,
-    private teamRepo: ITeamRepository
+    private teamRepo: ITeamRepository,
+    private teamLeadAlertService: TeamLeadScheduleAlertService
   ) {
     this.dispatchTeamAttribution = new DispatchTeamAttributionService(userRepo);
   }
 
   async execute(
     query: Record<string, string>,
-    actor?: { role: UserRole | null; teamId?: string | null; assignedCity?: string | null }
+    actor?: {
+      id?: string;
+      role: UserRole | null;
+      teamId?: string | null;
+      assignedCity?: string | null;
+      assignedCities?: string[] | null;
+    }
   ) {
     const date = query.date?.trim();
     if (!date) {
@@ -48,7 +56,7 @@ export class ListRoutesUseCase {
       filters.status = query.status as RouteStatus;
     }
 
-    // Team leads only ever see their own team's routes.
+    // Team leads only ever see their own team's routes (any city).
     if (actor?.role === UserRole.TEAM_LEAD) {
       if (!actor.teamId) {
         return { items: [], total: 0, page: filters.page ?? 1, limit: filters.limit ?? 50 };
@@ -56,14 +64,22 @@ export class ListRoutesUseCase {
       filters.teamId = actor.teamId;
     }
 
-    const city = mergeCityFilter(actor, query.city);
     const state = query.state?.trim();
     const storeId = query.storeId?.trim();
 
-    if (city || state || storeId) {
+    // Team leads: optional location filter only — never city-scoped like dispatch team.
+    const cityFilter =
+      actor?.role === UserRole.TEAM_LEAD
+        ? query.city?.trim()
+          ? { city: query.city.trim() }
+          : {}
+        : mergeCityListFilter(actor, query.city);
+
+    if (cityFilter.city || cityFilter.cities?.length || state || storeId) {
       const { items: schedules } = await this.scheduleRepo.findMany({
         date,
-        city,
+        city: cityFilter.city,
+        cities: cityFilter.cities,
         state: state?.toUpperCase(),
         storeId,
         page: 1,
@@ -143,6 +159,10 @@ export class ListRoutesUseCase {
         };
       })
     );
+
+    if (actor?.role === UserRole.TEAM_LEAD && actor.id) {
+      await this.teamLeadAlertService.acknowledgeRoutesForDate(actor.id, date);
+    }
 
     return {
       items: data,

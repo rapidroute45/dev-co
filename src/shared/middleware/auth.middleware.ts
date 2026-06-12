@@ -11,6 +11,7 @@ export interface AuthenticatedUser {
   status: UserStatus;
   teamId?: string | null;
   assignedCity?: string | null;
+  assignedCities?: string[] | null;
 }
 
 declare global {

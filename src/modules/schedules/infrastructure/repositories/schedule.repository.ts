@@ -7,6 +7,7 @@ import {
 import { ScheduleModel } from '../models/schedule.model';
 import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
 import { parseScheduleDate } from '../../application/utils/scheduleDate';
+import { applyCityListFilter } from '../../../../shared/services/cityScope.service';
 
 function mapDoc(doc: {
   _id: { toString(): string };
@@ -37,7 +38,7 @@ function mapDoc(doc: {
 function buildQuery(filters?: ScheduleListFilters) {
   const query: Record<string, unknown> = {};
   if (filters?.date) query.date = parseScheduleDate(filters.date);
-  if (filters?.city) query.city = new RegExp(filters.city.trim(), 'i');
+  applyCityListFilter(query, { city: filters?.city, cities: filters?.cities });
   if (filters?.state) query.state = new RegExp(filters.state.trim(), 'i');
   if (filters?.storeId) query.storeId = filters.storeId;
   if (filters?.status) query.status = filters.status;

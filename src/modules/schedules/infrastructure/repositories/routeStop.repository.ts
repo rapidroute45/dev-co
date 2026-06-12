@@ -79,23 +79,46 @@ export class RouteStopRepository implements IRouteStopRepository {
     scheduleId: string,
     stops: RouteStopInput[]
   ): Promise<RouteStopRecord[]> {
+    const existing = await RouteStopModel.find({ routeId });
+    const existingById = new Map(
+      existing.map((doc) => [String(doc._id), doc])
+    );
+    const existingByKey = new Map(
+      existing.map((doc) => [
+        `${doc.name.trim().toLowerCase()}|${doc.address.trim().toLowerCase()}`,
+        doc,
+      ])
+    );
+
     await RouteStopModel.deleteMany({ routeId });
     if (stops.length === 0) return [];
 
     const docs = await RouteStopModel.insertMany(
-      stops.map((s) => ({
-        routeId,
-        scheduleId,
-        sequence: s.sequence,
-        type: s.type,
-        name: s.name.trim(),
-        address: s.address.trim(),
-        accessCode: s.accessCode?.trim() || null,
-        destinationLat: s.destinationLat ?? null,
-        destinationLng: s.destinationLng ?? null,
-        placeId: s.placeId?.trim() || null,
-        status: RouteStopStatus.PENDING,
-      }))
+      stops.map((s) => {
+        const preserved =
+          (s.existingStopId && existingById.get(s.existingStopId)) ||
+          existingByKey.get(
+            `${s.name.trim().toLowerCase()}|${s.address.trim().toLowerCase()}`
+          );
+
+        return {
+          routeId,
+          scheduleId,
+          sequence: s.sequence,
+          type: s.type,
+          name: s.name.trim(),
+          address: s.address.trim(),
+          accessCode: s.accessCode?.trim() || null,
+          destinationLat: s.destinationLat ?? null,
+          destinationLng: s.destinationLng ?? null,
+          placeId: s.placeId?.trim() || null,
+          status: preserved?.status ?? RouteStopStatus.PENDING,
+          completedAt: preserved?.completedAt ?? null,
+          deliveryPhotoUrl: preserved?.deliveryPhotoUrl ?? null,
+          returnReason: preserved?.returnReason ?? null,
+          returnReasonCustom: preserved?.returnReasonCustom ?? null,
+        };
+      })
     );
 
     return docs.map(mapDoc);

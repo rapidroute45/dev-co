@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { TeamRepository } from '../../infrastructure/repositories/team.repository';
+import { dispatchOpsGuard } from '../../../../shared/middleware/dispatchOpsGuard';
 import { managerGuard } from '../../../../shared/middleware/managerGuard';
 import { CreateTeamUseCase } from '../../application/use-cases/createTeam.use-case';
 import { ListTeamsUseCase } from '../../application/use-cases/listTeams.use-case';
@@ -22,8 +23,8 @@ const controller = new TeamController(
 );
 
 router.post('/', managerGuard, controller.create);
-router.get('/', managerGuard, controller.list);
-router.get('/:teamId', managerGuard, controller.getById);
+router.get('/', dispatchOpsGuard, controller.list);
+router.get('/:teamId', dispatchOpsGuard, controller.getById);
 router.patch('/:teamId', managerGuard, controller.update);
 router.delete('/:teamId', managerGuard, controller.delete);
 

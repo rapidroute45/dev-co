@@ -16,6 +16,11 @@ import { ListSchedulesUseCase } from '../../application/use-cases/listSchedules.
 import { GetScheduleUseCase } from '../../application/use-cases/getSchedule.use-case';
 import { UpdateScheduleUseCase } from '../../application/use-cases/updateSchedule.use-case';
 import { DeleteScheduleUseCase } from '../../application/use-cases/deleteSchedule.use-case';
+import { ListTeamLeadScheduleAlertsUseCase } from '../../application/use-cases/listTeamLeadScheduleAlerts.use-case';
+import { AcknowledgeTeamLeadScheduleAlertUseCase } from '../../application/use-cases/acknowledgeTeamLeadScheduleAlert.use-case';
+import { TeamLeadScheduleAlertRepository } from '../../infrastructure/repositories/teamLeadScheduleAlert.repository';
+import { TeamLeadScheduleAlertService } from '../../application/services/teamLeadScheduleAlert.service';
+import { teamLeadGuard } from '../../../../shared/middleware/teamLeadGuard';
 import { ScheduleController } from '../controllers/schedule.controller';
 
 const router = Router();
@@ -27,6 +32,14 @@ const routeStopEnrichment = new RouteStopEnrichmentService(routeStopRepo);
 const storeRepo = new StoreRepository();
 const userRepo = new UserRepository();
 const teamRepo = new TeamRepository();
+const teamLeadAlertRepo = new TeamLeadScheduleAlertRepository();
+const teamLeadAlertService = new TeamLeadScheduleAlertService(
+  teamLeadAlertRepo,
+  scheduleRepo,
+  routeRepo,
+  storeRepo,
+  teamRepo
+);
 
 const controller = new ScheduleController(
   new CreateScheduleUseCase(scheduleRepo, storeRepo),
@@ -37,13 +50,22 @@ const controller = new ScheduleController(
     routeRepo,
     userRepo,
     teamRepo,
-    routeStopEnrichment
+    routeStopEnrichment,
+    teamLeadAlertService
   ),
   new UpdateScheduleUseCase(scheduleRepo, storeRepo, routeRepo),
-  new DeleteScheduleUseCase(scheduleRepo, routeRepo, routeStopRepo)
+  new DeleteScheduleUseCase(scheduleRepo, routeRepo, routeStopRepo),
+  new ListTeamLeadScheduleAlertsUseCase(teamLeadAlertService),
+  new AcknowledgeTeamLeadScheduleAlertUseCase(teamLeadAlertService)
 );
 
 router.post('/', dispatchOpsGuard, controller.create);
+router.get('/team-lead/alerts', teamLeadGuard, controller.listTeamLeadAlerts);
+router.post(
+  '/team-lead/alerts/:scheduleId/dismiss',
+  teamLeadGuard,
+  controller.dismissTeamLeadAlert
+);
 router.get('/', scheduleViewerGuard, controller.list);
 router.get('/:id', scheduleViewerGuard, controller.getById);
 router.put('/:id', dispatchOpsGuard, controller.update);

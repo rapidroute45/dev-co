@@ -12,6 +12,7 @@ import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.us
 import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
+import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
 import { sanitizeRoutePayloadForRole } from '../../../../shared/utils/routeCategoryAccess';
 import { UserRole } from '../../../../shared/constants/roles';
 
@@ -38,7 +39,8 @@ export class RouteController {
     private listMyRoutesUseCase: ListMyRoutesUseCase,
     private listMyCompletedRoutesUseCase: ListMyCompletedRoutesUseCase,
     private startRouteUseCase: StartRouteUseCase,
-    private routeDeliveryUseCase: RouteDeliveryUseCase
+    private routeDeliveryUseCase: RouteDeliveryUseCase,
+    private listLiveRoutesUseCase: ListLiveRoutesUseCase
   ) {}
 
   create = async (req: Request, res: Response, next: NextFunction) => {
@@ -232,8 +234,28 @@ export class RouteController {
 
   getTracking = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await this.routeDeliveryUseCase.getTracking(String(req.params.id));
+      const data = await this.routeDeliveryUseCase.getTracking(
+        String(req.params.id),
+        req.user
+      );
       res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  listLive = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await this.listLiveRoutesUseCase.execute(
+        req.query as Record<string, string>,
+        req.user
+      );
+      res.status(200).json({
+        success: true,
+        data: sanitizeRouteData(result.items, req.user?.role),
+        date: result.date,
+        count: result.items.length,
+      });
     } catch (error) {
       next(error);
     }
@@ -263,7 +285,11 @@ export class RouteController {
         String(req.params.stopId),
         req.user.id
       );
-      res.status(200).json({ success: true, message: 'Stop completed.', data });
+      res.status(200).json({
+        success: true,
+        message: data.routeCompleted ? 'Stop completed. Route finished.' : 'Stop completed.',
+        data,
+      });
     } catch (error) {
       next(error);
     }
@@ -285,7 +311,11 @@ export class RouteController {
         reason,
         customReason
       );
-      res.status(200).json({ success: true, message: 'Stop marked as return.', data });
+      res.status(200).json({
+        success: true,
+        message: data.routeCompleted ? 'Stop marked as return. Route finished.' : 'Stop marked as return.',
+        data,
+      });
     } catch (error) {
       next(error);
     }

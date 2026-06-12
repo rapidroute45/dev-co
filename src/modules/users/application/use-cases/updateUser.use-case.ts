@@ -17,6 +17,7 @@ export interface UpdateUserDTO {
   status?: UserStatus;
   teamId?: string | null;
   assignedCity?: string | null;
+  assignedCities?: string[] | null;
   password?: string;
 }
 
@@ -42,6 +43,26 @@ export class UpdateUserUseCase {
       code: t.code,
       teamLeadId: t.teamLeadId ?? null,
     };
+  }
+
+  private async resolveCityAssignment(
+    userId: string,
+    role: UserRole,
+    user: { assignedCity: string | null; assignedCities: string[] },
+    dto: UpdateUserDTO
+  ) {
+    if (!roleRequiresCity(role)) return undefined;
+
+    const hasCityPatch = dto.assignedCity !== undefined || dto.assignedCities !== undefined;
+    if (!hasCityPatch) return undefined;
+
+    return this.cityAssignment.validateAndResolveCityAssignment({
+      userId,
+      assignedRole: role,
+      assignedCity: dto.assignedCity !== undefined ? dto.assignedCity : user.assignedCity,
+      assignedCities:
+        dto.assignedCities !== undefined ? dto.assignedCities : user.assignedCities,
+    });
   }
 
   async execute(userId: string, dto: UpdateUserDTO, actorRole: UserRole) {
@@ -86,14 +107,7 @@ export class UpdateUserUseCase {
       });
 
       const resolvedTeamId = roleRequiresTeam(nextRole) ? (team?.id ?? null) : null;
-
-      const assignedCityInput =
-        dto.assignedCity !== undefined ? dto.assignedCity : user.assignedCity;
-      const assignedCity = await this.cityAssignment.validateAndResolveCity({
-        userId,
-        assignedRole: nextRole,
-        assignedCity: assignedCityInput,
-      });
+      const cityAssignment = await this.resolveCityAssignment(userId, nextRole, user, dto);
 
       const updated = await this.userRepo.update(userId, {
         fullName: dto.fullName,
@@ -101,7 +115,12 @@ export class UpdateUserUseCase {
         role: nextRole,
         status: nextStatus,
         teamId: resolvedTeamId,
-        assignedCity: assignedCity ?? null,
+        ...(roleRequiresCity(nextRole)
+          ? {
+              assignedCity: cityAssignment?.assignedCity,
+              assignedCities: cityAssignment?.assignedCities,
+            }
+          : { assignedCity: null, assignedCities: null }),
         passwordHash,
       });
 
@@ -114,39 +133,30 @@ export class UpdateUserUseCase {
         userId,
         teamId: dto.teamId!,
       });
-      const assignedCity =
-        dto.assignedCity !== undefined && user.role && roleRequiresCity(user.role)
-          ? await this.cityAssignment.validateAndResolveCity({
-              userId,
-              assignedRole: user.role,
-              assignedCity: dto.assignedCity,
-            })
-          : undefined;
+      const cityAssignment = await this.resolveCityAssignment(userId, user.role, user, dto);
       const updated = await this.userRepo.update(userId, {
         fullName: dto.fullName,
         phone: phonePatch,
         status: nextStatus,
-        assignedCity,
+        assignedCity: cityAssignment?.assignedCity,
+        assignedCities: cityAssignment?.assignedCities,
         passwordHash,
       });
       if (!updated) throw new AppError('Failed to update user', 500);
       return mapUserToResponse(updated, team);
     }
 
-    const assignedCity =
-      dto.assignedCity !== undefined && user.role && roleRequiresCity(user.role)
-        ? await this.cityAssignment.validateAndResolveCity({
-            userId,
-            assignedRole: user.role,
-            assignedCity: dto.assignedCity,
-          })
+    const cityAssignment =
+      user.role && roleRequiresCity(user.role)
+        ? await this.resolveCityAssignment(userId, user.role, user, dto)
         : undefined;
 
     const updated = await this.userRepo.update(userId, {
       fullName: dto.fullName,
       phone: phonePatch,
       status: nextStatus,
-      assignedCity,
+      assignedCity: cityAssignment?.assignedCity,
+      assignedCities: cityAssignment?.assignedCities,
       passwordHash,
     });
 

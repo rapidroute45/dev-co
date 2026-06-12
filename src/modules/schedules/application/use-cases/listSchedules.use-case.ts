@@ -4,7 +4,7 @@ import { IStoreRepository } from '../../../stores/domain/interfaces/store-reposi
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
 import { UserRole } from '../../../../shared/constants/roles';
-import { mergeCityFilter, normalizeCity } from '../../../../shared/services/cityScope.service';
+import { mergeCityListFilter, normalizeCity } from '../../../../shared/services/cityScope.service';
 import {
   DispatchTeamAttributionService,
   shouldAttachDispatchTeamAttribution,
@@ -27,16 +27,19 @@ export class ListSchedulesUseCase {
 
   async execute(
     query: Record<string, string>,
-    actor?: { role: UserRole | null; teamId?: string | null; assignedCity?: string | null }
+    actor?: { role: UserRole | null; teamId?: string | null; assignedCity?: string | null; assignedCities?: string[] | null }
   ) {
     const date = query.date?.trim();
     if (!date) {
       throw new AppError('date query parameter is required (YYYY-MM-DD).', 400);
     }
 
+    const cityFilter = mergeCityListFilter(actor, query.city);
+
     const filters: ScheduleListFilters = {
       date,
-      city: mergeCityFilter(actor, query.city),
+      city: cityFilter.city,
+      cities: cityFilter.cities,
       state: query.state?.trim() || undefined,
       storeId: query.storeId?.trim() || undefined,
       page: query.page ? Number(query.page) : 1,

@@ -14,19 +14,10 @@ const UserSchema = new Schema({
   },
   status: { type: String, enum: Object.values(UserStatus), default: UserStatus.PENDING },
   teamId: { type: Types.ObjectId, ref: 'Team', default: null },
+  /** Legacy single city — team leads; migrated dispatch team reads fall back here. */
   assignedCity: { type: String, trim: true, default: null, index: true },
+  /** Dispatch team may operate in multiple cities. */
+  assignedCities: { type: [String], default: [], index: true },
 }, { timestamps: true });
-
-UserSchema.index(
-  { role: 1, assignedCity: 1, status: 1 },
-  {
-    unique: true,
-    partialFilterExpression: {
-      role: UserRole.DISPATCH_TEAM,
-      status: UserStatus.ACTIVE,
-      assignedCity: { $type: 'string' },
-    },
-  }
-);
 
 export const UserModel = model('User', UserSchema);

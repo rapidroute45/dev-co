@@ -10,6 +10,7 @@ export interface UserProps {
   status: UserStatus;
   teamId?: string | null;
   assignedCity?: string | null;
+  assignedCities?: string[] | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -36,6 +37,7 @@ export class User {
   get status() { return this.props.status; }
   get teamId() { return this.props.teamId ?? null; }
   get assignedCity() { return this.props.assignedCity ?? null; }
+  get assignedCities() { return this.props.assignedCities ?? []; }
   get createdAt() { return this.props.createdAt; }
   get updatedAt() { return this.props.updatedAt; }
 

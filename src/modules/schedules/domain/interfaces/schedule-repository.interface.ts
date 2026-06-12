@@ -4,6 +4,7 @@ import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
 export interface ScheduleListFilters {
   date?: string;
   city?: string;
+  cities?: string[];
   state?: string;
   storeId?: string;
   status?: ScheduleStatus;

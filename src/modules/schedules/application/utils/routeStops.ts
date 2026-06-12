@@ -12,6 +12,7 @@ export function formatStoreAddress(store: Store): string {
 }
 
 export type StopDetailInput = {
+  id?: string;
   name: string;
   address: string;
   accessCode?: string;
@@ -32,6 +33,8 @@ function parseStopItem(raw: unknown, label: string): StopDetailInput {
     item?.placeId != null && String(item.placeId).trim()
       ? String(item.placeId).trim()
       : undefined;
+  const id =
+    item?.id != null && String(item.id).trim() ? String(item.id).trim() : undefined;
   const lat = item?.lat != null ? Number(item.lat) : undefined;
   const lng = item?.lng != null ? Number(item.lng) : undefined;
 
@@ -40,6 +43,7 @@ function parseStopItem(raw: unknown, label: string): StopDetailInput {
   }
 
   return {
+    id,
     name,
     address,
     accessCode: accessCode || undefined,
@@ -124,27 +128,4 @@ export function mapStopsToResponse(stops: RouteStopRecord[]) {
         dropoffStops.length - completedDropoffs - returnedDropoffs,
     },
   };
-}
-
-/** @deprecated Use buildGeocodedRouteStops — kept for tests referencing shape only. */
-export function buildRouteStopsForSave(
-  store: Store,
-  dropoffs: StopDetailInput[]
-): RouteStopInput[] {
-  const pickup: RouteStopInput = {
-    type: 'pickup',
-    sequence: 0,
-    name: store.storeName,
-    address: formatStoreAddress(store),
-  };
-
-  const stops = dropoffs.map((d, index) => ({
-    type: 'dropoff' as const,
-    sequence: index + 1,
-    name: d.name,
-    address: d.address,
-    accessCode: d.accessCode ?? null,
-  }));
-
-  return [pickup, ...stops];
 }

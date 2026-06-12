@@ -15,17 +15,20 @@ import { resolveDisplayName } from '../../../../shared/utils/displayName';
 import { ScheduleActivationService } from '../services/scheduleActivation.service';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { parsePickupDetail, parseStopDetails } from '../utils/routeStops';
-import { buildGeocodedRouteStops } from '../services/routeStopGeo.service';
+import { buildGeocodedRouteStops, scheduleRouteStopGeocoding, shouldDeferStopGeocoding } from '../services/routeStopGeo.service';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 import { AddressAccessCodeRepository } from '../../infrastructure/repositories/addressAccessCode.repository';
 import { parseRouteCategoryInput } from '../../../../shared/utils/routeCategoryAccess';
 import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
+import { scheduleGeocodeContext } from '../utils/geocodeContext';
 import {
   OPS_VERIFICATION_STATUSES,
   OpsVerificationStatus,
 } from '../../../../shared/constants/opsVerification';
 import { UserRole } from '../../../../shared/constants/roles';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
+import { emitRouteUpdated } from '../../../chat/socket/chat.socket';
+import { TeamLeadScheduleAlertService } from '../services/teamLeadScheduleAlert.service';
 
 export class UpdateRouteUseCase {
   constructor(
@@ -38,7 +41,8 @@ export class UpdateRouteUseCase {
     private scheduleActivation: ScheduleActivationService,
     private routeStopEnrichment: RouteStopEnrichmentService,
     private addressCodeRepo: AddressAccessCodeRepository,
-    private userRepo: IUserRepository
+    private userRepo: IUserRepository,
+    private teamLeadAlertService: TeamLeadScheduleAlertService
   ) {}
 
   async execute(
@@ -199,6 +203,9 @@ export class UpdateRouteUseCase {
         patch.deliveryVerification = DeliveryVerification.REJECTED;
       }
       patch.status = status;
+      if (status === RouteStatus.COMPLETED && existing.status !== RouteStatus.COMPLETED) {
+        patch.completedAt = new Date();
+      }
     }
 
     if (dto.deliveryVerification !== undefined) {
@@ -288,17 +295,29 @@ export class UpdateRouteUseCase {
         }))
       );
 
+      const geocodeContext = scheduleGeocodeContext({
+        city: schedule.city,
+        state: schedule.state,
+        storeAddress: store.address,
+        storeState: store.state,
+      });
+      const deferGeocoding = shouldDeferStopGeocoding(enrichedDropoffs.length);
+
       const stopRows = await buildGeocodedRouteStops({
         store,
         pickup: pickupSource,
         dropoffs: enrichedDropoffs,
-        geocodeContext: {
-          city: schedule.city,
-          state: schedule.state,
-          country: 'Pakistan',
-        },
+        geocodeContext,
+        skipExternalGeocoding: deferGeocoding,
       });
       await this.routeStopRepo.replaceForRoute(routeId, existing.scheduleId, stopRows);
+      if (deferGeocoding) {
+        scheduleRouteStopGeocoding({
+          routeStopRepo: this.routeStopRepo,
+          routeId,
+          geocodeContext,
+        });
+      }
       for (const d of enrichedDropoffs) {
         if (d.accessCode) {
           await this.addressCodeRepo.upsert(d.address, d.accessCode, d.name);
@@ -349,6 +368,21 @@ export class UpdateRouteUseCase {
     }
 
     await this.scheduleActivation.syncFromRoutes(updated.scheduleId);
+    await this.teamLeadAlertService.syncForSchedule(updated.scheduleId);
+
+    const realtimeDriverIds: string[] = [];
+    if (driverId) realtimeDriverIds.push(driverId);
+    if (driverChanged && existing.driverId) {
+      realtimeDriverIds.push(String(existing.driverId));
+    }
+    if (realtimeDriverIds.length > 0) {
+      emitRouteUpdated({
+        routeId: updated.id!,
+        scheduleId: schedule.id!,
+        action: 'updated',
+        driverIds: realtimeDriverIds,
+      });
+    }
 
     return this.routeStopEnrichment.enrichRoute(updated, {
       teamName: team.name,

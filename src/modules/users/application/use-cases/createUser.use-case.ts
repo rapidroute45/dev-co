@@ -18,6 +18,7 @@ export interface CreateUserDTO {
   role: UserRole;
   teamId?: string;
   assignedCity?: string | null;
+  assignedCities?: string[] | null;
   status?: UserStatus;
 }
 
@@ -74,15 +75,17 @@ export class CreateUserUseCase {
       teamId: dto.teamId,
     });
 
-    const assignedCity = await this.cityAssignment.validateAndResolveCity({
+    const cityAssignment = await this.cityAssignment.validateAndResolveCityAssignment({
       userId,
       assignedRole: dto.role,
       assignedCity: dto.assignedCity,
+      assignedCities: dto.assignedCities,
     });
 
     const updated = await this.userRepo.update(userId, {
       teamId: team?.id ?? null,
-      assignedCity: assignedCity ?? null,
+      assignedCity: cityAssignment.assignedCity,
+      assignedCities: cityAssignment.assignedCities,
       status,
       role: dto.role,
     });

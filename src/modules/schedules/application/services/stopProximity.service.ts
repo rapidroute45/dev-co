@@ -9,6 +9,7 @@ import { IRouteStopRepository, RouteStopRecord } from '../../domain/interfaces/r
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { haversineMeters } from '../utils/haversine';
 import { geocodeAddress, type GeocodeContext } from '../utils/geocodeAddress';
+import { scheduleGeocodeContext } from '../utils/geocodeContext';
 
 export type AutoCompletedStop = {
   stopId: string;
@@ -84,11 +85,11 @@ export class StopProximityService {
     if (!route?.scheduleId) return {};
     const schedule = await this.scheduleRepo.findById(route.scheduleId);
     if (!schedule) return {};
-    return {
+    return scheduleGeocodeContext({
       city: schedule.city,
       state: schedule.state,
-      country: 'Pakistan',
-    };
+      storeState: schedule.state,
+    });
   }
 
   private async evaluateStop(params: {

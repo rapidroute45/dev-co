@@ -9,6 +9,7 @@ export type DispatchTeamBrief = {
   fullName: string | null;
   displayName: string;
   assignedCity: string;
+  assignedCities: string[];
 };
 
 export function shouldAttachDispatchTeamAttribution(role: UserRole | null | undefined): boolean {
@@ -22,12 +23,18 @@ export class DispatchTeamAttributionService {
     const user = await this.userRepo.findActiveDispatchTeamByCity(city);
     if (!user?.id) return null;
     const assignedCity = user.assignedCity?.trim() || city.trim();
+    const assignedCities = user.assignedCities?.length
+      ? user.assignedCities
+      : assignedCity
+        ? [assignedCity]
+        : [city.trim()];
     return {
       id: user.id,
       email: user.email,
       fullName: user.fullName,
       displayName: resolveDisplayName(user.fullName, user.email),
       assignedCity,
+      assignedCities,
     };
   }
 

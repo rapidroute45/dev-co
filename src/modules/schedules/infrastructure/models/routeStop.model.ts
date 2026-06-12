@@ -27,7 +27,7 @@ const RouteStopSchema = new Schema(
     /** Geocoded delivery address (not overwritten by driver GPS). */
     destinationLat: { type: Number, default: null },
     destinationLng: { type: Number, default: null },
-    /** Google Places place_id — set once at route create/edit. */
+    /** Optional external place reference (legacy). */
     placeId: { type: String, trim: true, default: null },
     /** Driver GPS when they first entered the stop approach zone. */
     proximityAnchorLat: { type: Number, default: null },

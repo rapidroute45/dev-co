@@ -33,6 +33,8 @@ export type RouteStopInput = {
   destinationLat?: number | null;
   destinationLng?: number | null;
   placeId?: string | null;
+  /** When replacing stops, match an existing stop to preserve driver completion fields. */
+  existingStopId?: string | null;
 };
 
 export interface IRouteStopRepository {

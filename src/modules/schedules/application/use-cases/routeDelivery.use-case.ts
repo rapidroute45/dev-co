@@ -17,10 +17,13 @@ import { StopProximityService } from '../services/stopProximity.service';
 import { NotificationService } from '../../../notifications/application/services/notification.service';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
+import { IStoreRepository } from '../../../stores/domain/interfaces/store-repository.interface';
 import { UserRole } from '../../../../shared/constants/roles';
 import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 import { OpsVerificationStatus } from '../../../../shared/constants/opsVerification';
 import { computeOvertimeHours } from '../utils/routeOvertime';
+import { emitDriverLocationUpdated, emitRouteUpdated } from '../../../chat/socket/chat.socket';
+import { resolveDisplayName } from '../../../../shared/utils/displayName';
 
 export class RouteDeliveryUseCase {
   constructor(
@@ -33,8 +36,61 @@ export class RouteDeliveryUseCase {
     private stopProximity: StopProximityService,
     private notificationService: NotificationService,
     private userRepo: IUserRepository,
-    private scheduleRepo: IScheduleRepository
+    private scheduleRepo: IScheduleRepository,
+    private storeRepo: IStoreRepository
   ) {}
+
+  private assertTrackingViewer(actor?: {
+    role: UserRole | null;
+    assignedCity?: string | null;
+    assignedCities?: string[] | null;
+  }) {
+    if (
+      actor?.role !== UserRole.ADMIN &&
+      actor?.role !== UserRole.DISPATCH_MANAGER &&
+      actor?.role !== UserRole.DISPATCH_TEAM
+    ) {
+      throw new AppError('Access denied.', 403);
+    }
+  }
+
+  private async publishDriverLocation(params: {
+    route: NonNullable<Awaited<ReturnType<IRouteRepository['findById']>>>;
+    driverId: string;
+    lat: number;
+    lng: number;
+    recordedAt: Date;
+    autoCompletedStops?: { stopId: string; stopName: string }[];
+    routeCompleted?: boolean;
+  }) {
+    const schedule = await this.scheduleRepo.findById(params.route.scheduleId);
+    if (!schedule) return;
+
+    const store = await this.storeRepo.findById(schedule.storeId);
+    const driver = await this.userRepo.findById(params.driverId);
+    const stops = await this.routeStopRepo.findByRouteId(params.route.id!);
+    const mapped = mapStopsToResponse(stops);
+
+    emitDriverLocationUpdated({
+      routeId: params.route.id!,
+      scheduleId: params.route.scheduleId,
+      driverId: params.driverId,
+      driverName: driver
+        ? resolveDisplayName(driver.fullName, driver.email)
+        : 'Driver',
+      routeName: params.route.routeName,
+      lat: params.lat,
+      lng: params.lng,
+      recordedAt: params.recordedAt.toISOString(),
+      status: params.route.status,
+      city: schedule.city,
+      state: schedule.state,
+      storeName: store?.storeName ?? null,
+      progress: mapped.progress,
+      autoCompletedStops: params.autoCompletedStops,
+      routeCompleted: params.routeCompleted,
+    });
+  }
 
   private async assertDriverRoute(routeId: string, driverId: string) {
     const route = await this.routeRepo.findById(routeId);
@@ -103,6 +159,21 @@ export class RouteDeliveryUseCase {
       });
     }
 
+    const refreshedRoute = await this.routeRepo.findById(routeId);
+    const completedRoute = await this.tryAutoCompleteRoute(routeId, driverId);
+
+    if (refreshedRoute) {
+      await this.publishDriverLocation({
+        route: refreshedRoute,
+        driverId,
+        lat,
+        lng,
+        recordedAt,
+        autoCompletedStops,
+        routeCompleted: Boolean(completedRoute),
+      });
+    }
+
     console.log('[location-ping]', {
       routeId,
       driverId,
@@ -111,6 +182,7 @@ export class RouteDeliveryUseCase {
       recordedAt: recordedAt.toISOString(),
       dwell,
       autoCompletedStops,
+      routeCompleted: Boolean(completedRoute),
     });
 
     return {
@@ -119,7 +191,8 @@ export class RouteDeliveryUseCase {
       recordedAt: recordedAt.toISOString(),
       dwell,
       autoCompletedStops,
-      stopArrival,
+      stopArrival: completedRoute ? null : stopArrival,
+      routeCompleted: Boolean(completedRoute),
     };
   }
 
@@ -158,6 +231,68 @@ export class RouteDeliveryUseCase {
     }
   }
 
+  private async finalizeRouteCompletion(routeId: string, route: Awaited<ReturnType<IRouteRepository['findById']>>) {
+    if (!route) throw new AppError('Route not found.', 404);
+
+    const path = await this.driverLocationRepo.listByRoute(routeId);
+    const totalMiles = sumLocationPathMiles(path);
+    const completedAt = new Date();
+    const overtimeHours = computeOvertimeHours({
+      arrivalMinutes: route.arrivalMinutes,
+      departureMinutes: route.departureMinutes,
+      startedAt: route.startedAt,
+      completedAt,
+    });
+
+    const updated = await this.routeRepo.update(routeId, {
+      status: RouteStatus.COMPLETED,
+      deliveryVerification: DeliveryVerification.PENDING,
+      opsVerificationStatus: OpsVerificationStatus.PENDING,
+      totalMiles: totalMiles > 0 ? totalMiles : route.mileage,
+      completedAt,
+      overtimeHours,
+    });
+    if (!updated) throw new AppError('Failed to complete route.', 500);
+
+    await this.dwellDetection.resolveActiveSessions(routeId);
+
+    emitRouteUpdated({
+      routeId,
+      scheduleId: route.scheduleId,
+      action: 'updated',
+      driverIds: route.driverId ? [route.driverId] : [],
+    });
+
+    return this.routeStopEnrichment.enrichRoute(updated);
+  }
+
+  /** When every dropoff is delivered or returned, finish the route without a separate driver action. */
+  private async tryAutoCompleteRoute(routeId: string, driverId: string) {
+    const route = await this.routeRepo.findById(routeId);
+    if (!route || route.driverId !== driverId) return null;
+    if (route.status !== RouteStatus.IN_PROGRESS) return null;
+
+    const stops = await this.routeStopRepo.findByRouteId(routeId);
+    const dropoffs = stops.filter((s) => s.type === 'dropoff');
+    if (dropoffs.length === 0) return null;
+
+    const pending = dropoffs.filter((s) => s.status === RouteStopStatus.PENDING);
+    if (pending.length > 0) return null;
+
+    return this.finalizeRouteCompletion(routeId, route);
+  }
+
+  private stopActionResult(
+    stop: NonNullable<Awaited<ReturnType<IRouteStopRepository['updateById']>>>,
+    completedRoute: Awaited<ReturnType<RouteDeliveryUseCase['tryAutoCompleteRoute']>>
+  ) {
+    return {
+      stop,
+      routeCompleted: Boolean(completedRoute),
+      route: completedRoute ?? undefined,
+    };
+  }
+
   async completeStop(routeId: string, stopId: string, driverId: string) {
     const route = await this.assertDriverRoute(routeId, driverId);
     if (route.status !== RouteStatus.IN_PROGRESS) {
@@ -191,7 +326,16 @@ export class RouteDeliveryUseCase {
       deliveryVerification: DeliveryVerification.PENDING,
     });
 
-    return updated;
+    emitRouteUpdated({
+      routeId,
+      scheduleId: route.scheduleId,
+      action: 'updated',
+      driverIds: [driverId],
+    });
+
+    const completedRoute = await this.tryAutoCompleteRoute(routeId, driverId);
+
+    return this.stopActionResult(updated, completedRoute);
   }
 
   async returnStop(
@@ -225,13 +369,25 @@ export class RouteDeliveryUseCase {
       throw new AppError('Stop already finalized.', 400);
     }
 
-    return this.routeStopRepo.updateById(stopId, {
+    const updated = await this.routeStopRepo.updateById(stopId, {
       status: RouteStopStatus.RETURNED,
       returnReason: preset,
       returnReasonCustom: preset === 'custom' ? customReason?.trim() || null : null,
       deliveryPhotoUrl: null,
       completedAt: new Date(),
     });
+    if (!updated) throw new AppError('Failed to return stop.', 500);
+
+    emitRouteUpdated({
+      routeId,
+      scheduleId: route.scheduleId,
+      action: 'updated',
+      driverIds: [driverId],
+    });
+
+    const completedRoute = await this.tryAutoCompleteRoute(routeId, driverId);
+
+    return this.stopActionResult(updated, completedRoute);
   }
 
   async setStopAccessCode(
@@ -278,34 +434,24 @@ export class RouteDeliveryUseCase {
       );
     }
 
-    const path = await this.driverLocationRepo.listByRoute(routeId);
-    const totalMiles = sumLocationPathMiles(path);
-    const completedAt = new Date();
-    const overtimeHours = computeOvertimeHours({
-      arrivalMinutes: route.arrivalMinutes,
-      departureMinutes: route.departureMinutes,
-      startedAt: route.startedAt,
-      completedAt,
-    });
-
-    const updated = await this.routeRepo.update(routeId, {
-      status: RouteStatus.COMPLETED,
-      deliveryVerification: DeliveryVerification.PENDING,
-      opsVerificationStatus: OpsVerificationStatus.PENDING,
-      totalMiles: totalMiles > 0 ? totalMiles : route.mileage,
-      completedAt,
-      overtimeHours,
-    });
-    if (!updated) throw new AppError('Failed to complete route.', 500);
-
-    await this.dwellDetection.resolveActiveSessions(routeId);
-
-    return this.routeStopEnrichment.enrichRoute(updated);
+    return this.finalizeRouteCompletion(routeId, route);
   }
 
-  async getTracking(routeId: string) {
+  async getTracking(
+    routeId: string,
+    actor?: {
+      role: UserRole | null;
+      assignedCity?: string | null;
+      assignedCities?: string[] | null;
+    }
+  ) {
+    this.assertTrackingViewer(actor);
+
     const route = await this.routeRepo.findById(routeId);
     if (!route) throw new AppError('Route not found.', 404);
+
+    const schedule = await this.scheduleRepo.findById(route.scheduleId);
+    if (schedule) enforceActorCity(actor, schedule.city);
 
     const stops = await this.routeStopRepo.findByRouteId(routeId);
     const mapped = mapStopsToResponse(stops);

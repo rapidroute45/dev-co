@@ -41,7 +41,7 @@ export class NotificationService {
     const message = `${input.storeName} (${input.city}, ${input.state}) — ${input.arrivalTime} to ${input.departureTime}. Accept or decline in the app.`;
 
     const recipients = new Set<string>([input.driverId]);
-    if (input.teamLeadId) recipients.add(input.teamLeadId);
+    // Team leads receive schedule alerts instead of route_offer notifications.
 
     await Promise.all(
       [...recipients].map((recipientId) =>

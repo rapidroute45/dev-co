@@ -7,6 +7,7 @@ export interface ApproveUserUpdate {
   status: UserStatus;
   teamId?: string | null;
   assignedCity?: string | null;
+  assignedCities?: string[] | null;
 }
 
 export interface UserListFilters {
@@ -25,6 +26,7 @@ export interface UserUpdateData {
   status?: UserStatus;
   teamId?: string | null;
   assignedCity?: string | null;
+  assignedCities?: string[] | null;
   passwordHash?: string;
 }
 

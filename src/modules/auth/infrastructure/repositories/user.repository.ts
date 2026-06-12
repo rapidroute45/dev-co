@@ -18,6 +18,7 @@ function mapDoc(doc: {
   status: string;
   teamId?: { toString(): string } | null;
   assignedCity?: string | null;
+  assignedCities?: string[] | null;
   createdAt?: Date;
   updatedAt?: Date;
 }): User {
@@ -31,6 +32,7 @@ function mapDoc(doc: {
     status: doc.status as UserStatus,
     teamId: doc.teamId?.toString() ?? null,
     assignedCity: doc.assignedCity ?? null,
+    assignedCities: doc.assignedCities ?? [],
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
@@ -101,10 +103,11 @@ export class UserRepository implements IUserRepository {
   async findActiveDispatchTeamByCity(city: string): Promise<User | null> {
     const trimmed = city.trim();
     if (!trimmed) return null;
+    const regex = new RegExp(`^${trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
     const doc = await UserModel.findOne({
       role: UserRole.DISPATCH_TEAM,
       status: UserStatus.ACTIVE,
-      assignedCity: { $regex: new RegExp(`^${trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i') },
+      $or: [{ assignedCity: { $regex: regex } }, { assignedCities: { $regex: regex } }],
     });
     return doc ? mapDoc(doc) : null;
   }
@@ -119,6 +122,7 @@ export class UserRepository implements IUserRepository {
       status: user.status,
       teamId: user.teamId ?? null,
       assignedCity: user.assignedCity ?? null,
+      assignedCities: user.assignedCities ?? [],
     });
     return mapDoc(created);
   }
@@ -129,6 +133,7 @@ export class UserRepository implements IUserRepository {
       status: update.status,
       teamId: update.teamId ?? null,
       assignedCity: update.assignedCity ?? null,
+      assignedCities: update.assignedCities ?? [],
     });
   }
 
@@ -141,6 +146,7 @@ export class UserRepository implements IUserRepository {
     if (data.status !== undefined) patch.status = data.status;
     if (data.teamId !== undefined) patch.teamId = data.teamId;
     if (data.assignedCity !== undefined) patch.assignedCity = data.assignedCity;
+    if (data.assignedCities !== undefined) patch.assignedCities = data.assignedCities;
     if (data.passwordHash !== undefined) patch.password = data.passwordHash;
 
     const doc = await UserModel.findByIdAndUpdate(userId, patch, {

@@ -8,7 +8,8 @@ import { parseScheduleDate, formatScheduleDate } from '../../../schedules/applic
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
 import {
   CityActor,
-  resolveActorCityFilter,
+  getActorAssignedCities,
+  mergeCityListFilter,
 } from '../../../../shared/services/cityScope.service';
 
 const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER, UserRole.TEAM_LEAD];
@@ -33,12 +34,14 @@ export class ManagerDashboardService {
   async getStats(query: Record<string, string>, actor?: CityActor) {
     const scheduleDate = this.resolveDate(query);
     const date = formatScheduleDate(scheduleDate);
-    const cityScope = resolveActorCityFilter(actor);
+    const cityFilter = mergeCityListFilter(actor, query.city);
+    const scopedCities = getActorAssignedCities(actor);
 
-    if (cityScope) {
+    if (cityFilter.city || cityFilter.cities?.length) {
       const { items: schedules } = await this.scheduleRepo.findMany({
         date,
-        city: cityScope,
+        city: cityFilter.city,
+        cities: cityFilter.cities,
         page: 1,
         limit: 500,
       });
@@ -52,7 +55,8 @@ export class ManagerDashboardService {
 
       return {
         date,
-        city: cityScope,
+        city: cityFilter.city ?? scopedCities[0] ?? null,
+        cities: cityFilter.cities ?? (scopedCities.length > 1 ? scopedCities : undefined),
         todayRoutes,
         availableDrivers,
         completedRoutes,

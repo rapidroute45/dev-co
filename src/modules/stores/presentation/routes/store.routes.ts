@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { dispatchOpsGuard } from '../../../../shared/middleware/dispatchOpsGuard';
+import { managerGuard } from '../../../../shared/middleware/managerGuard';
 import { scheduleViewerGuard } from '../../../../shared/middleware/scheduleViewerGuard';
 import { StoreRepository } from '../../infrastructure/repositories/store.repository';
 import { CreateStoreUseCase } from '../../application/use-cases/createStore.use-case';
@@ -18,9 +18,9 @@ const controller = new StoreController(
   new UpdateStoreUseCase(storeRepo)
 );
 
-router.post('/', dispatchOpsGuard, controller.create);
+router.post('/', managerGuard, controller.create);
 router.get('/', scheduleViewerGuard, controller.list);
 router.get('/:id', scheduleViewerGuard, controller.getById);
-router.put('/:id', dispatchOpsGuard, controller.update);
+router.put('/:id', managerGuard, controller.update);
 
 export default router;

@@ -8,7 +8,6 @@ export const ROLES_REQUIRING_TEAM: UserRole[] = [
 
 export const ROLES_REQUIRING_CITY: UserRole[] = [
   UserRole.DISPATCH_TEAM,
-  UserRole.TEAM_LEAD,
 ];
 
 export function roleRequiresTeam(role: UserRole): boolean {

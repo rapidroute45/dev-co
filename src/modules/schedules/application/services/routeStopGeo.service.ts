@@ -1,62 +1,60 @@
-import { AppError } from '../../../../shared/errors/app-error';
 import type { RouteStopInput } from '../../domain/interfaces/route-stop-repository.interface';
+import type { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import type { Store } from '../../../stores/domain/entities/store.entity';
 import {
   formatStoreAddress,
   type StopDetailInput,
 } from '../utils/routeStops';
 import {
-  googleGeocodeAddress,
-  googlePlaceDetails,
+  geocodeAddress,
   type GeocodeContext,
-} from '../utils/googleMaps.service';
-import { geocodeAddress as nominatimGeocode } from '../utils/geocodeAddress';
+} from '../utils/geocodeAddress';
 
-async function resolveCoordinates(
-  input: StopDetailInput,
-  context: GeocodeContext
-): Promise<{ lat: number; lng: number; placeId: string | null }> {
+/** Above this count, skip blocking geocode calls during save. */
+export const BULK_STOP_GEOCODE_THRESHOLD = 5;
+
+const NOMINATIM_MIN_INTERVAL_MS = 1100;
+let lastGeocodeRequestAt = 0;
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function coordsFromInput(input: StopDetailInput): { lat: number | null; lng: number | null } {
   if (
     input.lat != null &&
     input.lng != null &&
     Number.isFinite(input.lat) &&
     Number.isFinite(input.lng)
   ) {
-    return {
-      lat: input.lat,
-      lng: input.lng,
-      placeId: input.placeId?.trim() || null,
-    };
+    return { lat: input.lat, lng: input.lng };
   }
+  return { lat: null, lng: null };
+}
 
-  if (input.placeId?.trim()) {
-    const details = await googlePlaceDetails(input.placeId.trim());
-    if (details) {
-      return {
-        lat: details.lat,
-        lng: details.lng,
-        placeId: input.placeId.trim(),
-      };
-    }
-  }
+async function rateLimitedGeocode(address: string, context: GeocodeContext) {
+  const waitMs = Math.max(0, lastGeocodeRequestAt + NOMINATIM_MIN_INTERVAL_MS - Date.now());
+  if (waitMs > 0) await sleep(waitMs);
+  lastGeocodeRequestAt = Date.now();
+  return geocodeAddress(address, context);
+}
 
-  let geo = await googleGeocodeAddress(input.address, context);
-  if (!geo) {
-    geo = await nominatimGeocode(input.address, context);
-  }
+async function resolveCoordinates(
+  input: StopDetailInput,
+  context: GeocodeContext,
+  skipExternalGeocoding: boolean
+): Promise<{ lat: number | null; lng: number | null }> {
+  const fromInput = coordsFromInput(input);
+  if (fromInput.lat != null && fromInput.lng != null) return fromInput;
+  if (skipExternalGeocoding) return { lat: null, lng: null };
 
-  if (!geo) {
-    throw new AppError(
-      `Could not resolve map coordinates for "${input.name}". Pick the address from Google suggestions or check the address.`,
-      400
-    );
-  }
+  const geo = await rateLimitedGeocode(input.address, context);
+  if (geo) return { lat: geo.lat, lng: geo.lng };
+  return { lat: null, lng: null };
+}
 
-  return {
-    lat: geo.lat,
-    lng: geo.lng,
-    placeId: input.placeId?.trim() || null,
-  };
+export function shouldDeferStopGeocoding(dropoffCount: number): boolean {
+  return dropoffCount > BULK_STOP_GEOCODE_THRESHOLD;
 }
 
 export async function buildGeocodedRouteStops(params: {
@@ -64,17 +62,20 @@ export async function buildGeocodedRouteStops(params: {
   pickup?: StopDetailInput | null;
   dropoffs: StopDetailInput[];
   geocodeContext: GeocodeContext;
+  skipExternalGeocoding?: boolean;
 }): Promise<RouteStopInput[]> {
   const { store, dropoffs, geocodeContext } = params;
+  const skipExternalGeocoding = params.skipExternalGeocoding ?? false;
 
-  const pickupInput: StopDetailInput = params.pickup?.name && params.pickup?.address
-    ? params.pickup
-    : {
-        name: store.storeName,
-        address: formatStoreAddress(store),
-      };
+  const pickupInput: StopDetailInput =
+    params.pickup?.name && params.pickup?.address
+      ? params.pickup
+      : {
+          name: store.storeName,
+          address: formatStoreAddress(store),
+        };
 
-  const pickupGeo = await resolveCoordinates(pickupInput, geocodeContext);
+  const pickupGeo = await resolveCoordinates(pickupInput, geocodeContext, skipExternalGeocoding);
   const pickup: RouteStopInput = {
     type: 'pickup',
     sequence: 0,
@@ -82,24 +83,58 @@ export async function buildGeocodedRouteStops(params: {
     address: pickupInput.address.trim(),
     destinationLat: pickupGeo.lat,
     destinationLng: pickupGeo.lng,
-    placeId: pickupGeo.placeId,
+    placeId: pickupInput.placeId?.trim() || null,
   };
 
   const stops: RouteStopInput[] = [];
   for (let i = 0; i < dropoffs.length; i++) {
-    const d = dropoffs[i];
-    const geo = await resolveCoordinates(d, geocodeContext);
+    const dropoff = dropoffs[i];
+    const geo = await resolveCoordinates(dropoff, geocodeContext, skipExternalGeocoding);
     stops.push({
       type: 'dropoff',
       sequence: i + 1,
-      name: d.name.trim(),
-      address: d.address.trim(),
-      accessCode: d.accessCode ?? null,
+      name: dropoff.name.trim(),
+      address: dropoff.address.trim(),
+      accessCode: dropoff.accessCode ?? null,
       destinationLat: geo.lat,
       destinationLng: geo.lng,
-      placeId: geo.placeId,
+      placeId: dropoff.placeId?.trim() || null,
+      existingStopId: dropoff.id?.trim() || null,
     });
   }
 
   return [pickup, ...stops];
+}
+
+/** Fill missing stop coordinates after a fast bulk save. */
+export async function geocodeMissingRouteStops(params: {
+  routeStopRepo: IRouteStopRepository;
+  routeId: string;
+  geocodeContext: GeocodeContext;
+}): Promise<void> {
+  const { routeStopRepo, routeId, geocodeContext } = params;
+  const stops = await routeStopRepo.findByRouteId(routeId);
+
+  for (const stop of stops) {
+    if (stop.destinationLat != null && stop.destinationLng != null) continue;
+    if (!stop.id || !stop.address.trim()) continue;
+
+    const geo = await rateLimitedGeocode(stop.address, geocodeContext);
+    if (!geo) continue;
+
+    await routeStopRepo.updateById(stop.id, {
+      destinationLat: geo.lat,
+      destinationLng: geo.lng,
+    });
+  }
+}
+
+export function scheduleRouteStopGeocoding(params: {
+  routeStopRepo: IRouteStopRepository;
+  routeId: string;
+  geocodeContext: GeocodeContext;
+}) {
+  void geocodeMissingRouteStops(params).catch((error) => {
+    console.error(`Background geocoding failed for route ${params.routeId}`, error);
+  });
 }

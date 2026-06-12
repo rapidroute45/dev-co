@@ -14,6 +14,7 @@ import {
   shouldAttachDispatchTeamAttribution,
 } from '../../../../shared/services/dispatchTeamAttribution.service';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
+import { TeamLeadScheduleAlertService } from '../services/teamLeadScheduleAlert.service';
 
 export class GetScheduleUseCase {
   private dispatchTeamAttribution: DispatchTeamAttributionService;
@@ -24,30 +25,40 @@ export class GetScheduleUseCase {
     private routeRepo: IRouteRepository,
     private userRepo: IUserRepository,
     private teamRepo: ITeamRepository,
-    private routeStopEnrichment: RouteStopEnrichmentService
+    private routeStopEnrichment: RouteStopEnrichmentService,
+    private teamLeadAlertService: TeamLeadScheduleAlertService
   ) {
     this.dispatchTeamAttribution = new DispatchTeamAttributionService(userRepo);
   }
 
   async execute(
     scheduleId: string,
-    actor?: { id: string; role: UserRole | null; assignedCity?: string | null }
+    actor?: {
+      id: string;
+      role: UserRole | null;
+      teamId?: string | null;
+      assignedCity?: string | null;
+      assignedCities?: string[] | null;
+    }
   ) {
     const schedule = await this.scheduleRepo.findById(scheduleId);
     if (!schedule) throw new AppError('Schedule not found.', 404);
-    enforceActorCity(actor, schedule.city);
+
+    if (actor?.role !== UserRole.TEAM_LEAD) {
+      enforceActorCity(actor, schedule.city);
+    }
 
     const store = await this.storeRepo.findById(schedule.storeId);
     let routes = await this.routeRepo.findManyByScheduleId(scheduleId);
 
     if (actor?.role === UserRole.DRIVER || actor?.role === UserRole.TEAM_DRIVER) {
       routes = routes.filter((r) => r.driverId === actor.id);
-    } else if (actor?.role === UserRole.TEAM_LEAD && actor.id) {
-      const team = await this.teamRepo.findById(
-        (await this.userRepo.findById(actor.id))?.teamId ?? ''
-      );
-      if (team) {
-        routes = routes.filter((r) => r.teamId === team.id);
+    } else if (actor?.role === UserRole.TEAM_LEAD) {
+      const teamId = actor.teamId;
+      if (!teamId) {
+        routes = [];
+      } else {
+        routes = routes.filter((r) => r.teamId === teamId);
       }
     }
 
@@ -72,6 +83,10 @@ export class GetScheduleUseCase {
     const dispatchTeam = shouldAttachDispatchTeamAttribution(actor?.role)
       ? await this.dispatchTeamAttribution.findByCity(schedule.city)
       : undefined;
+
+    if (actor?.role === UserRole.TEAM_LEAD && actor.id) {
+      await this.teamLeadAlertService.acknowledgeSchedule(scheduleId, actor.id);
+    }
 
     return mapScheduleToResponse(
       schedule,

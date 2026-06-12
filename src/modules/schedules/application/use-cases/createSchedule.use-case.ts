@@ -8,6 +8,7 @@ import { CreateScheduleDTO } from '../dto/create-schedule.dto';
 import { parseFutureScheduleDate } from '../utils/scheduleDate';
 import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
+import { UserRole } from '../../../../shared/constants/roles';
 import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 
 export class CreateScheduleUseCase {
@@ -29,14 +30,20 @@ export class CreateScheduleUseCase {
     let storeResponse = null;
 
     if (dto.store) {
+      if (actor?.role === UserRole.DISPATCH_TEAM) {
+        throw new AppError('You do not have permission to create stores.', 403);
+      }
       const createStore = new CreateStoreUseCase(this.storeRepo);
-      storeResponse = await createStore.execute({
-        storeName: dto.store.storeName,
-        city: dto.store.city ?? city,
-        state: dto.store.state ?? state,
-        address: dto.store.address,
-        activeStatus: dto.store.activeStatus,
-      });
+      storeResponse = await createStore.execute(
+        {
+          storeName: dto.store.storeName,
+          city: dto.store.city ?? city,
+          state: dto.store.state ?? state,
+          address: dto.store.address,
+          activeStatus: dto.store.activeStatus,
+        },
+        actor
+      );
       storeId = storeResponse.id;
     }
 

@@ -23,7 +23,13 @@ export class GetRouteUseCase {
 
   async execute(
     routeId: string,
-    actor?: { id: string; role: UserRole | null; assignedCity?: string | null }
+    actor?: {
+      id: string;
+      role: UserRole | null;
+      teamId?: string | null;
+      assignedCity?: string | null;
+      assignedCities?: string[] | null;
+    }
   ) {
     const route = await this.routeRepo.findById(routeId);
     if (!route) throw new AppError('Route not found.', 404);
@@ -34,8 +40,16 @@ export class GetRouteUseCase {
       }
     }
 
+    if (actor?.role === UserRole.TEAM_LEAD) {
+      if (!actor.teamId || route.teamId !== actor.teamId) {
+        throw new AppError('Access denied.', 403);
+      }
+    }
+
     const schedule = await this.scheduleRepo.findById(route.scheduleId);
-    if (schedule) enforceActorCity(actor, schedule.city);
+    if (schedule && actor?.role !== UserRole.TEAM_LEAD) {
+      enforceActorCity(actor, schedule.city);
+    }
     const team = await this.teamRepo.findById(route.teamId);
     const driver = route.driverId
       ? await this.userRepo.findById(route.driverId)
