@@ -24,6 +24,7 @@ export type UpsertTeamLeadScheduleAlertInput = Omit<
 export interface ITeamLeadScheduleAlertRepository {
   upsertPending(input: UpsertTeamLeadScheduleAlertInput): Promise<TeamLeadScheduleAlertRecord>;
   deleteByScheduleAndTeam(scheduleId: string, teamId: string): Promise<void>;
+  deleteByScheduleId(scheduleId: string): Promise<void>;
   listPendingForTeamLead(teamLeadId: string): Promise<TeamLeadScheduleAlertRecord[]>;
   acknowledge(scheduleId: string, teamLeadId: string): Promise<boolean>;
   acknowledgeForDate(teamLeadId: string, scheduleDate: string): Promise<number>;
