@@ -114,8 +114,10 @@ export function mapStopsToResponse(stops: RouteStopRecord[]) {
           name: pickupStop.name,
           address: pickupStop.address,
           status: pickupStop.status,
-          lat: pickupStop.destinationLat,
-          lng: pickupStop.destinationLng,
+          lat: pickupStop.destinationLat ?? pickupStop.lat,
+          lng: pickupStop.destinationLng ?? pickupStop.lng,
+          destinationLat: pickupStop.destinationLat,
+          destinationLng: pickupStop.destinationLng,
           placeId: pickupStop.placeId,
         }
       : null,

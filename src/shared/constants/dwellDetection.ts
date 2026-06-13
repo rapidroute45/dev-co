@@ -1,3 +1,6 @@
+/** How close the driver must be to the store pickup to show "at pickup" on the driver app. */
+export const PICKUP_PROXIMITY_RADIUS_METERS = 200;
+
 /** Max distance (m) from cluster center to count as "same location". */
 export const DWELL_RADIUS_METERS = 75;
 

@@ -1,6 +1,7 @@
 import { RouteStopStatus } from '../../../../shared/constants/routeStopStatuses';
 import {
   DWELL_THRESHOLD_MS,
+  PICKUP_PROXIMITY_RADIUS_METERS,
   STOP_ANCHOR_RADIUS_METERS,
   STOP_APPROACH_RADIUS_METERS,
 } from '../../../../shared/constants/dwellDetection';
@@ -113,7 +114,7 @@ export class StopProximityService {
     );
 
     return {
-      atPickup: distanceMeters <= 100,
+      atPickup: distanceMeters <= PICKUP_PROXIMITY_RADIUS_METERS,
       pickupName: pickup.name,
       distanceMeters: Math.round(distanceMeters),
     };
