@@ -25,6 +25,12 @@ export type StopArrivalStatus = {
   thresholdSeconds: number;
 };
 
+export type PickupProximityStatus = {
+  atPickup: boolean;
+  pickupName: string;
+  distanceMeters: number | null;
+};
+
 const ANCHOR_EXIT_METERS = STOP_ANCHOR_RADIUS_METERS * 1.5;
 const GEOCODE_MISMATCH_REFINE_METERS = 150;
 
@@ -78,6 +84,39 @@ export class StopProximityService {
     }
 
     return { autoCompleted, arrival };
+  }
+
+  async evaluatePickupProximity(params: {
+    routeId: string;
+    lat: number;
+    lng: number;
+  }): Promise<PickupProximityStatus | null> {
+    const stops = await this.routeStopRepo.findByRouteId(params.routeId);
+    const pickup = stops.find((s) => s.type === 'pickup');
+    if (!pickup) return null;
+
+    let destination: { lat: number; lng: number } | null = null;
+    if (pickup.destinationLat != null && pickup.destinationLng != null) {
+      destination = { lat: pickup.destinationLat, lng: pickup.destinationLng };
+    } else if (pickup.id) {
+      const geocodeContext = await this.resolveGeocodeContext(params.routeId);
+      destination = await this.ensureDestination(pickup, pickup.id, geocodeContext);
+    }
+
+    if (!destination) return null;
+
+    const distanceMeters = haversineMeters(
+      destination.lat,
+      destination.lng,
+      params.lat,
+      params.lng
+    );
+
+    return {
+      atPickup: distanceMeters <= STOP_APPROACH_RADIUS_METERS,
+      pickupName: pickup.name,
+      distanceMeters: Math.round(distanceMeters),
+    };
   }
 
   private async resolveGeocodeContext(routeId: string): Promise<GeocodeContext> {

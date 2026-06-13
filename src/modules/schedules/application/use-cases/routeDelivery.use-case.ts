@@ -9,6 +9,8 @@ import { IRouteRepository } from '../../domain/interfaces/route-repository.inter
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { AddressAccessCodeRepository } from '../../infrastructure/repositories/addressAccessCode.repository';
 import { DriverLocationRepository } from '../../infrastructure/repositories/driverLocation.repository';
+import { geocodeMissingRouteStops } from '../services/routeStopGeo.service';
+import { scheduleGeocodeContext } from '../utils/geocodeContext';
 import { mapStopsToResponse } from '../utils/routeStops';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 import { DwellDetectionService } from '../services/dwellDetection.service';
@@ -159,6 +161,12 @@ export class RouteDeliveryUseCase {
         recordedAt,
       });
 
+    const pickupProximity = await this.stopProximity.evaluatePickupProximity({
+      routeId,
+      lat,
+      lng,
+    });
+
     if (autoCompletedStops.length > 0) {
       await this.routeRepo.update(routeId, {
         deliveryVerification: DeliveryVerification.PENDING,
@@ -209,6 +217,7 @@ export class RouteDeliveryUseCase {
       dwell,
       autoCompletedStops,
       stopArrival: completedRoute ? null : stopArrival,
+      pickupProximity,
       routeCompleted: Boolean(completedRoute),
     };
   }
@@ -433,6 +442,26 @@ export class RouteDeliveryUseCase {
     const schedule = await this.scheduleRepo.findById(route.scheduleId);
     if (schedule) enforceActorCity(actor, schedule.city);
 
+    if (schedule) {
+      try {
+        const store = schedule.storeId
+          ? await this.storeRepo.findById(String(schedule.storeId))
+          : null;
+        await geocodeMissingRouteStops({
+          routeStopRepo: this.routeStopRepo,
+          routeId,
+          geocodeContext: scheduleGeocodeContext({
+            city: schedule.city,
+            state: schedule.state,
+            storeAddress: store?.address ?? null,
+            storeState: store?.state ?? null,
+          }),
+        });
+      } catch (error) {
+        console.error(`Geocoding stops for tracking route ${routeId} failed`, error);
+      }
+    }
+
     const stops = await this.routeStopRepo.findByRouteId(routeId);
     const mapped = mapStopsToResponse(stops);
     const path = await this.driverLocationRepo.listByRoute(routeId);
@@ -452,6 +481,8 @@ export class RouteDeliveryUseCase {
             : null,
         totalMiles: route.totalMiles,
       },
+      scheduleCity: schedule?.city ?? null,
+      scheduleState: schedule?.state ?? null,
       ...mapped,
       locationTrail: path.map((p) => ({
         lat: p.lat,
