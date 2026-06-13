@@ -70,6 +70,7 @@ export class RouteDeliveryUseCase {
       sessionId: string | null;
       startedAt?: string | null;
     };
+    backgroundSharing?: boolean;
   }) {
     const schedule = await this.scheduleRepo.findById(params.route.scheduleId);
     if (!schedule) return;
@@ -105,6 +106,7 @@ export class RouteDeliveryUseCase {
             startedAt: params.dwell.startedAt ?? null,
           }
         : undefined,
+      backgroundSharing: Boolean(params.backgroundSharing),
     });
   }
 
@@ -125,7 +127,8 @@ export class RouteDeliveryUseCase {
     routeId: string,
     driverId: string,
     lat: number,
-    lng: number
+    lng: number,
+    backgroundSharing = false
   ) {
     const route = await this.assertDriverRoute(routeId, driverId);
     if (route.status !== RouteStatus.IN_PROGRESS) {
@@ -142,6 +145,7 @@ export class RouteDeliveryUseCase {
       driverLat: lat,
       driverLng: lng,
       driverLocationAt: recordedAt,
+      driverLocationBackgroundSharing: Boolean(backgroundSharing),
     });
 
     const dwell = await this.dwellDetection.evaluateLocationPing({
@@ -196,6 +200,7 @@ export class RouteDeliveryUseCase {
         autoCompletedStops,
         routeCompleted: Boolean(completedRoute),
         dwell,
+        backgroundSharing: Boolean(backgroundSharing),
       });
     }
 
@@ -219,6 +224,7 @@ export class RouteDeliveryUseCase {
       stopArrival: completedRoute ? null : stopArrival,
       pickupProximity,
       routeCompleted: Boolean(completedRoute),
+      backgroundSharing: Boolean(backgroundSharing),
     };
   }
 
@@ -477,6 +483,7 @@ export class RouteDeliveryUseCase {
                 lat: route.driverLat,
                 lng: route.driverLng,
                 updatedAt: route.driverLocationAt,
+                sharingInBackground: route.driverLocationBackgroundSharing,
               }
             : null,
         totalMiles: route.totalMiles,

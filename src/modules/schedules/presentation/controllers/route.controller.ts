@@ -264,12 +264,17 @@ export class RouteController {
   reportLocation = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
-      const { lat, lng } = req.body as { lat?: number; lng?: number };
+      const { lat, lng, backgroundSharing } = req.body as {
+        lat?: number;
+        lng?: number;
+        backgroundSharing?: boolean;
+      };
       const data = await this.routeDeliveryUseCase.reportLocation(
         String(req.params.id),
         req.user.id,
         Number(lat),
-        Number(lng)
+        Number(lng),
+        Boolean(backgroundSharing)
       );
       res.status(200).json({ success: true, data });
     } catch (error) {
