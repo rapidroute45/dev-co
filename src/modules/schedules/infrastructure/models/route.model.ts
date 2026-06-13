@@ -1,5 +1,9 @@
 import { Schema, model, Types } from 'mongoose';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
+import {
+  DEFAULT_ROUTE_CATEGORY,
+  RouteCategory,
+} from '../../../../shared/constants/routeCategories';
 
 const RouteSchema = new Schema(
   {
@@ -8,6 +12,12 @@ const RouteSchema = new Schema(
     teamId: { type: Types.ObjectId, ref: 'Team', required: true, index: true },
     driverId: { type: Types.ObjectId, ref: 'User', default: null, index: true },
     routeName: { type: String, trim: true, default: null },
+    routeCategory: {
+      type: String,
+      enum: Object.values(RouteCategory),
+      default: DEFAULT_ROUTE_CATEGORY,
+      index: true,
+    },
     location: { type: String, trim: true, default: null },
     vehicleType: { type: String, trim: true, default: null },
     mileage: { type: Number, default: null },
@@ -35,6 +45,16 @@ const RouteSchema = new Schema(
       enum: ['pending', 'verified', 'rejected'],
       default: null,
     },
+    overtimeHours: { type: Number, default: 0, min: 0 },
+    opsVerificationStatus: {
+      type: String,
+      enum: ['pending', 'team_verified', 'manager_verified', 'rejected', null],
+      default: null,
+    },
+    teamVerifiedAt: { type: Date, default: null },
+    teamVerifiedBy: { type: Types.ObjectId, ref: 'User', default: null },
+    managerVerifiedAt: { type: Date, default: null },
+    managerVerifiedBy: { type: Types.ObjectId, ref: 'User', default: null },
   },
   { timestamps: true }
 );

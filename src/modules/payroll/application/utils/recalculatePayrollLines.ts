@@ -11,12 +11,20 @@ export function recalculateDriverLine(
   line: PayrollDriverLine,
   standardRate: number
 ): PayrollDriverLine {
-  const routes: PayrollRouteLine[] = line.routes.map((r) => ({
-    ...r,
-    rate: standardRate,
-  }));
+  const routes: PayrollRouteLine[] = line.routes.map((r) => {
+    if (r.defaultRate != null && r.defaultRate > 0) {
+      return r;
+    }
+    return {
+      ...r,
+      rate: standardRate,
+      defaultRate: standardRate,
+      originalAmount: standardRate,
+      routeCategory: r.routeCategory ?? 'SMALL',
+    };
+  });
   const routeCount = routes.length;
-  const basePay = roundMoney(routeCount * standardRate);
+  const basePay = roundMoney(routes.reduce((sum, r) => sum + r.rate, 0));
   const bonus = line.bonus;
   const deduction = line.deduction;
   const overtime = line.overtime ?? 0;

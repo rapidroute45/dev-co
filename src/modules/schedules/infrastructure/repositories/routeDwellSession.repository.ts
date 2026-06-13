@@ -68,6 +68,22 @@ export class RouteDwellSessionRepository {
     return doc ? mapDoc(doc) : null;
   }
 
+  async findActiveByRouteIds(routeIds: string[]): Promise<Map<string, RouteDwellSessionRecord>> {
+    if (routeIds.length === 0) return new Map();
+    const docs = await RouteDwellSessionModel.find({
+      routeId: { $in: routeIds },
+      status: RouteDwellStatus.ACTIVE,
+    }).sort({ startedAt: -1 });
+    const map = new Map<string, RouteDwellSessionRecord>();
+    for (const doc of docs) {
+      const routeId = doc.routeId.toString();
+      if (!map.has(routeId)) {
+        map.set(routeId, mapDoc(doc));
+      }
+    }
+    return map;
+  }
+
   async create(params: {
     routeId: string;
     driverId: string;

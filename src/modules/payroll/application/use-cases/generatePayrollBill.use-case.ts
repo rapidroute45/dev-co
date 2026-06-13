@@ -9,12 +9,29 @@ import {
   PayrollStatus,
 } from '../../domain/entities/payrollBill.entity';
 import { IPayrollRepository } from '../../domain/interfaces/payroll-repository.interface';
-import { STANDARD_ROUTE_RATE } from '../payroll.constants';
-import { buildPayrollLineItems } from '../utils/buildPayrollLineItems';
+import { PayrollSettingsRepository } from '../../infrastructure/repositories/payrollSettings.repository';
+import { PayrollRateOverrideRepository } from '../../infrastructure/repositories/payrollRateOverride.repository';
+import { PayrollRouteAdjustmentRepository } from '../../infrastructure/repositories/payrollRouteAdjustment.repository';
+import { ScheduleRepository } from '../../../schedules/infrastructure/repositories/schedule.repository';
+import { buildPayrollRateContext } from '../services/payrollRatesContext.service';
+import { PayrollAuditService } from '../services/payrollAudit.service';
+import {
+  buildPayrollLineItems,
+  payrollTotalsFromLineItems,
+} from '../utils/buildPayrollLineItems';
+import {
+  applyDriverAdjustments,
+  driverAdjustmentsRollup,
+  type DriverLineAdjustmentInput,
+} from '../utils/payrollBillRollups';
 import {
   loadUnbilledCompletedRoutesForTeam,
+  loadUnbilledCompletedRoutesForTeamInPeriod,
+  parsePayrollPeriodInput,
   periodBoundsFromRoutes,
 } from '../utils/unbilledPayrollRoutes';
+import { NotificationService } from '../../../notifications/application/services/notification.service';
+import { formatScheduleDate } from '../../../schedules/application/utils/scheduleDate';
 
 const OPS_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
 
@@ -25,8 +42,12 @@ interface Actor {
 
 export interface GeneratePayrollInput {
   teamId: string;
-  /** When set, bill only these completed unbilled routes (e.g. one route = $100). */
+  periodStart?: string;
+  periodEnd?: string;
+  /** When set, bill only these completed unbilled routes. */
   routeIds?: string[];
+  /** Per-driver bonus, deduction, overtime applied when the bill is created. */
+  adjustments?: DriverLineAdjustmentInput[];
 }
 
 export class GeneratePayrollBillUseCase {
@@ -34,7 +55,13 @@ export class GeneratePayrollBillUseCase {
     private payrollRepo: IPayrollRepository,
     private routeRepo: IRouteRepository,
     private userRepo: IUserRepository,
-    private teamRepo: ITeamRepository
+    private teamRepo: ITeamRepository,
+    private settingsRepo: PayrollSettingsRepository,
+    private overrideRepo: PayrollRateOverrideRepository,
+    private scheduleRepo: ScheduleRepository,
+    private adjustmentRepo: PayrollRouteAdjustmentRepository,
+    private audit: PayrollAuditService,
+    private notifications: NotificationService
   ) {}
 
   async execute(actor: Actor, input: GeneratePayrollInput): Promise<PayrollBill> {
@@ -50,6 +77,7 @@ export class GeneratePayrollBillUseCase {
 
     const routeIds = (input.routeIds ?? []).map((id) => id.trim()).filter(Boolean);
     const isRouteScoped = routeIds.length > 0;
+    const hasPeriod = Boolean(input.periodStart?.trim() && input.periodEnd?.trim());
 
     if (!isRouteScoped) {
       const openBill = await this.payrollRepo.findOpenBillByTeam(teamId);
@@ -62,6 +90,9 @@ export class GeneratePayrollBillUseCase {
     }
 
     let routes;
+    let periodStart: Date;
+    let periodEnd: Date;
+
     if (isRouteScoped) {
       const billedIds = new Set(await this.payrollRepo.collectAllBilledRouteIds());
       routes = [];
@@ -88,19 +119,40 @@ export class GeneratePayrollBillUseCase {
         }
         routes.push(route);
       }
+      if (hasPeriod) {
+        ({ periodStart, periodEnd } = parsePayrollPeriodInput(
+          input.periodStart,
+          input.periodEnd
+        ));
+      } else {
+        ({ periodStart, periodEnd } = periodBoundsFromRoutes(routes));
+      }
+    } else if (hasPeriod) {
+      ({ periodStart, periodEnd } = parsePayrollPeriodInput(
+        input.periodStart,
+        input.periodEnd
+      ));
+      routes = await loadUnbilledCompletedRoutesForTeamInPeriod(
+        this.routeRepo,
+        this.payrollRepo,
+        teamId,
+        periodStart,
+        periodEnd
+      );
     } else {
       routes = await loadUnbilledCompletedRoutesForTeam(
         this.routeRepo,
         this.payrollRepo,
         teamId
       );
+      ({ periodStart, periodEnd } = periodBoundsFromRoutes(routes));
     }
 
     if (routes.length === 0) {
       throw new AppError(
         isRouteScoped
           ? 'No billable routes in this request.'
-          : 'No unbilled completed routes for this team. Pending balance is $0.',
+          : 'No unbilled completed routes for this team in the selected period.',
         400
       );
     }
@@ -117,11 +169,23 @@ export class GeneratePayrollBillUseCase {
       }
     }
 
-    const creator = await this.userRepo.findById(actor.id);
-    const lineItems = buildPayrollLineItems(routes, nameById);
+    const [settings, rateContext, adjustments] = await Promise.all([
+      this.settingsRepo.getOrCreate(),
+      buildPayrollRateContext(
+        routes,
+        this.settingsRepo,
+        this.overrideRepo,
+        this.scheduleRepo
+      ),
+      this.adjustmentRepo.findByRouteIds(routes.map((r) => r.id!).filter(Boolean)),
+    ]);
+    const builtLineItems = buildPayrollLineItems(routes, nameById, rateContext, adjustments);
+    const routeTotals = payrollTotalsFromLineItems(builtLineItems);
+    const lineItems = applyDriverAdjustments(builtLineItems, input.adjustments ?? []);
+    const driverRollups = driverAdjustmentsRollup(lineItems);
     const totalAmount = lineItems.reduce((sum, line) => sum + line.total, 0);
-    const { periodStart, periodEnd } = periodBoundsFromRoutes(routes);
 
+    const creator = await this.userRepo.findById(actor.id);
     const bill = new PayrollBill({
       teamId,
       teamName: team.name,
@@ -129,13 +193,52 @@ export class GeneratePayrollBillUseCase {
       periodStart,
       periodEnd,
       status: PayrollStatus.DRAFT,
-      standardRate: STANDARD_ROUTE_RATE,
+      standardRate: settings.smallRouteRate,
       lineItems,
       totalAmount,
+      subtotal: routeTotals.subtotal,
+      adjustmentsTotal: routeTotals.adjustmentsTotal,
+      bonusesTotal: driverRollups.bonusesTotal,
+      deductionsTotal: driverRollups.deductionsTotal,
+      overtimeTotal: driverRollups.overtimeTotal,
       createdBy: actor.id,
       createdByName: creator?.fullName?.trim() || creator?.email || 'Dispatch',
     });
 
-    return this.payrollRepo.save(bill);
+    const saved = await this.payrollRepo.save(bill);
+
+    await this.audit.log({
+      userId: actor.id,
+      userName: creator?.fullName?.trim() || creator?.email || 'User',
+      action: 'payroll_generated',
+      entityType: 'PayrollBill',
+      entityId: saved.id ?? null,
+      newValue: {
+        teamId,
+        periodStart: periodStart.toISOString(),
+        periodEnd: periodEnd.toISOString(),
+        totalAmount,
+        routeCount: routes.length,
+        bonusesTotal: driverRollups.bonusesTotal,
+        deductionsTotal: driverRollups.deductionsTotal,
+        overtimeTotal: driverRollups.overtimeTotal,
+      },
+    });
+
+    const opsUsers = await this.userRepo.findActiveByRoles([
+      UserRole.ADMIN,
+      UserRole.DISPATCH_MANAGER,
+    ]);
+    await this.notifications.notifyPayrollGenerated({
+      recipientIds: opsUsers.map((u) => u.id!).filter(Boolean),
+      teamId,
+      teamName: team.name,
+      billId: saved.id!,
+      totalAmount,
+      periodStart: formatScheduleDate(periodStart),
+      periodEnd: formatScheduleDate(periodEnd),
+    });
+
+    return saved;
   }
 }

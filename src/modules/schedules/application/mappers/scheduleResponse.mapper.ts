@@ -2,6 +2,7 @@ import { Schedule } from '../../domain/entities/schedule.entity';
 import { Route } from '../../domain/entities/route.entity';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { formatScheduleDate } from '../utils/scheduleDate';
+import type { DispatchTeamBrief } from '../../../../shared/services/dispatchTeamAttribution.service';
 
 function countPendingRoutes(routes: ReturnType<typeof mapRouteToResponse>[]): number {
   return routes.filter(
@@ -20,7 +21,11 @@ export function mapScheduleToResponse(
     address?: string | null;
   } | null,
   routes?: ReturnType<typeof mapRouteToResponse>[],
-  counts?: { routeCount?: number; pendingRouteCount?: number }
+  counts?: {
+    routeCount?: number;
+    pendingRouteCount?: number;
+    dispatchTeam?: DispatchTeamBrief | null;
+  }
 ) {
   const routeList = routes ?? [];
   return {
@@ -30,6 +35,7 @@ export function mapScheduleToResponse(
     state: schedule.state,
     storeId: schedule.storeId,
     store: store ?? null,
+    dispatchTeam: counts?.dispatchTeam ?? null,
     status: schedule.status,
     notes: schedule.notes,
     createdBy: schedule.createdBy,
@@ -73,6 +79,7 @@ export function mapRouteToResponse(
     driverEmail: extras?.driverEmail,
     driverName: extras?.driverName,
     routeName: route.routeName,
+    routeCategory: route.routeCategory,
     location: route.location,
     vehicleType: route.vehicleType,
     mileage: route.mileage,
@@ -88,6 +95,12 @@ export function mapRouteToResponse(
     departureMinutes: route.departureMinutes,
     status: route.status,
     deliveryVerification: route.deliveryVerification,
+    overtimeHours: route.overtimeHours,
+    opsVerificationStatus: route.opsVerificationStatus,
+    teamVerifiedAt: route.teamVerifiedAt,
+    teamVerifiedBy: route.teamVerifiedBy,
+    managerVerifiedAt: route.managerVerifiedAt,
+    managerVerifiedBy: route.managerVerifiedBy,
     assignedBy: route.assignedBy,
     notes: route.notes,
     startedAt: route.startedAt,

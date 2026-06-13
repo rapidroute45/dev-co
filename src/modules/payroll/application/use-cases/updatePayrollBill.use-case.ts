@@ -9,6 +9,10 @@ import {
   recalculateDriverLine,
   totalFromLineItems,
 } from '../utils/recalculatePayrollLines';
+import {
+  applyDriverAdjustments,
+  driverAdjustmentsRollup,
+} from '../utils/payrollBillRollups';
 
 const OPS_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
 
@@ -28,13 +32,6 @@ export interface UpdatePayrollBillInput {
   note?: string | null;
   standardRate?: number;
   removeRouteIds?: string[];
-}
-
-function sanitize(value: number | undefined, fallback: number): number {
-  if (value === undefined || value === null) return fallback;
-  const num = Number(value);
-  if (!Number.isFinite(num) || num < 0) return fallback;
-  return Math.round(num * 100) / 100;
 }
 
 const EDITABLE_STATUSES = new Set<PayrollStatus>([
@@ -91,30 +88,17 @@ export class UpdatePayrollBillUseCase {
       );
     }
 
-    const adjByDriver = new Map<string, LineAdjustment>();
-    (input.adjustments ?? []).forEach((a) => adjByDriver.set(a.driverId, a));
-
-    lineItems = lineItems.map((line) => {
-      const adj = adjByDriver.get(line.driverId);
-      const bonus = sanitize(adj?.bonus, line.bonus);
-      const deduction = sanitize(adj?.deduction, line.deduction);
-      const overtime = sanitize(adj?.overtime, line.overtime ?? 0);
-      const total = line.basePay + bonus + overtime - deduction;
-      return {
-        ...line,
-        bonus,
-        deduction,
-        overtime,
-        total: Math.round(total * 100) / 100,
-      };
-    });
-
+    lineItems = applyDriverAdjustments(lineItems, input.adjustments ?? []);
     const totalAmount = totalFromLineItems(lineItems);
+    const rollups = driverAdjustmentsRollup(lineItems);
 
     const updated = await this.payrollRepo.update(billId, {
       lineItems,
       totalAmount,
       standardRate,
+      bonusesTotal: rollups.bonusesTotal,
+      deductionsTotal: rollups.deductionsTotal,
+      overtimeTotal: rollups.overtimeTotal,
       note: input.note !== undefined ? input.note : bill.note,
       ...(bill.status === PayrollStatus.TEAM_LEAD_DISPUTED
         ? { teamLeadNote: null, teamLeadReviewedAt: null }

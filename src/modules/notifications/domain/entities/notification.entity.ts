@@ -7,6 +7,10 @@ export enum NotificationType {
   DOCUMENT_REJECTED = 'document_rejected',
   DRIVER_DWELLING = 'driver_dwelling',
   STOP_AUTO_COMPLETED = 'stop_auto_completed',
+  PAYROLL_GENERATED = 'payroll_generated',
+  PAYROLL_SENT = 'payroll_sent',
+  PAYROLL_APPROVED = 'payroll_approved',
+  ROUTE_OPS_REVIEW = 'route_ops_review',
 }
 
 export interface NotificationProps {

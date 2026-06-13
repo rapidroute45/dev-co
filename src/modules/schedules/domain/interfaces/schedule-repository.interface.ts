@@ -4,6 +4,7 @@ import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
 export interface ScheduleListFilters {
   date?: string;
   city?: string;
+  cities?: string[];
   state?: string;
   storeId?: string;
   status?: ScheduleStatus;
@@ -24,6 +25,7 @@ export interface ScheduleUpdateData {
 
 export interface IScheduleRepository {
   findById(id: string): Promise<Schedule | null>;
+  findAllIdsByStoreId(storeId: string): Promise<string[]>;
   findMany(filters?: ScheduleListFilters): Promise<{ items: Schedule[]; total: number }>;
   save(schedule: Schedule): Promise<Schedule>;
   update(id: string, data: ScheduleUpdateData): Promise<Schedule | null>;

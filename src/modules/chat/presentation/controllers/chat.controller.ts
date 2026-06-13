@@ -4,7 +4,12 @@ import { UserRole } from '../../../../shared/constants/roles';
 import { publicUploadPath } from '../../../../shared/upload/upload.config';
 import { ChatService } from '../../application/services/chat.service';
 
-const MANAGER_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
+const OPS_CHAT_ROLES = [
+  UserRole.ADMIN,
+  UserRole.DISPATCH_MANAGER,
+  UserRole.DISPATCH_TEAM,
+];
+const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER];
 
 export class ChatController {
   constructor(
@@ -26,10 +31,23 @@ export class ChatController {
 
   listDrivers = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      if (!req.user?.role || !MANAGER_ROLES.includes(req.user.role)) {
-        return next(new AppError('Managers only.', 403));
+      if (!req.user?.role || !OPS_CHAT_ROLES.includes(req.user.role)) {
+        return next(new AppError('Ops roles only.', 403));
       }
-      const data = await this.chatService.listDriversForManager();
+      const data = await this.chatService.listDriversForOps(
+        req.user.role,
+        req.user.assignedCity
+      );
+      res.status(200).json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  listOpsPeers = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const data = await this.chatService.listOpsPeers(req.user.id, req.user.role);
       res.status(200).json({ success: true, data });
     } catch (e) {
       next(e);
@@ -39,14 +57,33 @@ export class ChatController {
   createConversation = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
-      if (!req.user.role || !MANAGER_ROLES.includes(req.user.role)) {
-        return next(new AppError('Managers only.', 403));
+      if (!req.user.role || !OPS_CHAT_ROLES.includes(req.user.role)) {
+        return next(new AppError('Ops roles only.', 403));
       }
       const { driverId } = req.body as { driverId?: string };
       if (!driverId) return next(new AppError('driverId is required.', 400));
       await this.chatService.getOrCreateConversation(req.user.id, driverId);
       const list = await this.chatService.listConversations(req.user.id, req.user.role);
-      const conv = list.find((c) => c.driverId === driverId);
+      const conv = list.find((c) => c.driverId === driverId && c.kind === 'driver');
+      res.status(201).json({ success: true, data: conv ?? null });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  createInternalConversation = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      if (!req.user.role || !OPS_CHAT_ROLES.includes(req.user.role)) {
+        return next(new AppError('Ops roles only.', 403));
+      }
+      const { peerId } = req.body as { peerId?: string };
+      if (!peerId) return next(new AppError('peerId is required.', 400));
+      await this.chatService.getOrCreateInternalConversation(req.user.id, peerId);
+      const list = await this.chatService.listConversations(req.user.id, req.user.role);
+      const conv = list.find(
+        (c) => c.kind === 'internal' && (c.otherUserId === peerId)
+      );
       res.status(201).json({ success: true, data: conv ?? null });
     } catch (e) {
       next(e);
@@ -56,7 +93,6 @@ export class ChatController {
   openConversation = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
-      const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER];
       if (!req.user.role || !DRIVER_ROLES.includes(req.user.role)) {
         return next(new AppError('Drivers only.', 403));
       }

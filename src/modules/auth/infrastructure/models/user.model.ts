@@ -14,6 +14,10 @@ const UserSchema = new Schema({
   },
   status: { type: String, enum: Object.values(UserStatus), default: UserStatus.PENDING },
   teamId: { type: Types.ObjectId, ref: 'Team', default: null },
+  /** Legacy single city — team leads; migrated dispatch team reads fall back here. */
+  assignedCity: { type: String, trim: true, default: null, index: true },
+  /** Dispatch team may operate in multiple cities. */
+  assignedCities: { type: [String], default: [], index: true },
 }, { timestamps: true });
 
 export const UserModel = model('User', UserSchema);

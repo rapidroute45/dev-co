@@ -6,6 +6,7 @@ import {
 } from '../../domain/interfaces/store-repository.interface';
 import { StoreModel } from '../models/store.model';
 import { StoreActiveStatus } from '../../../../shared/constants/storeStatuses';
+import { applyCityListFilter } from '../../../../shared/services/cityScope.service';
 
 function mapDoc(doc: {
   _id: { toString(): string };
@@ -33,7 +34,7 @@ function mapDoc(doc: {
 
 function buildQuery(filters?: StoreListFilters) {
   const query: Record<string, unknown> = {};
-  if (filters?.city) query.city = new RegExp(filters.city.trim(), 'i');
+  applyCityListFilter(query, { city: filters?.city, cities: filters?.cities });
   if (filters?.state) query.state = new RegExp(filters.state.trim(), 'i');
   if (filters?.activeStatus) query.activeStatus = filters.activeStatus;
   if (filters?.search?.trim()) {

@@ -1,5 +1,10 @@
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
+import { OpsVerificationStatus } from '../../../../shared/constants/opsVerification';
+import {
+  DEFAULT_ROUTE_CATEGORY,
+  RouteCategory,
+} from '../../../../shared/constants/routeCategories';
 
 export interface RouteProps {
   id?: string;
@@ -8,6 +13,7 @@ export interface RouteProps {
   teamId: string;
   driverId: string | null;
   routeName?: string | null;
+  routeCategory?: RouteCategory;
   location?: string | null;
   vehicleType?: string | null;
   mileage?: number | null;
@@ -26,6 +32,12 @@ export interface RouteProps {
   startedAt?: Date | null;
   completedAt?: Date | null;
   deliveryVerification?: DeliveryVerification | null;
+  overtimeHours?: number;
+  opsVerificationStatus?: OpsVerificationStatus | null;
+  teamVerifiedAt?: Date | null;
+  teamVerifiedBy?: string | null;
+  managerVerifiedAt?: Date | null;
+  managerVerifiedBy?: string | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -38,6 +50,7 @@ export class Route {
       ...props,
       driverId: props.driverId ?? null,
       routeName: props.routeName ?? null,
+      routeCategory: props.routeCategory ?? DEFAULT_ROUTE_CATEGORY,
       location: props.location ?? null,
       vehicleType: props.vehicleType ?? null,
       mileage: props.mileage ?? null,
@@ -64,6 +77,9 @@ export class Route {
   }
   get routeName() {
     return this.props.routeName ?? null;
+  }
+  get routeCategory() {
+    return this.props.routeCategory ?? DEFAULT_ROUTE_CATEGORY;
   }
   get location() {
     return this.props.location ?? null;
@@ -118,6 +134,24 @@ export class Route {
   }
   get deliveryVerification() {
     return this.props.deliveryVerification ?? null;
+  }
+  get overtimeHours() {
+    return this.props.overtimeHours ?? 0;
+  }
+  get opsVerificationStatus() {
+    return this.props.opsVerificationStatus ?? null;
+  }
+  get teamVerifiedAt() {
+    return this.props.teamVerifiedAt ?? null;
+  }
+  get teamVerifiedBy() {
+    return this.props.teamVerifiedBy ?? null;
+  }
+  get managerVerifiedAt() {
+    return this.props.managerVerifiedAt ?? null;
+  }
+  get managerVerifiedBy() {
+    return this.props.managerVerifiedBy ?? null;
   }
   get createdAt() {
     return this.props.createdAt;

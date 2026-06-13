@@ -2,29 +2,36 @@ import bcrypt from 'bcryptjs';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
 import { TeamAssignmentService } from '../../../teams/application/services/teamAssignment.service';
+import { CityAssignmentService } from '../services/cityAssignment.service';
 import { User } from '../../../auth/domain/entities/user.entity';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 import { canAssignRole } from '../../../../shared/constants/assignableRoles';
 import { AppError } from '../../../../shared/errors/app-error';
 import { mapUserToResponse } from '../mappers/userResponse.mapper';
+import { parsePhoneInput } from '../../../../shared/utils/phone';
 
 export interface CreateUserDTO {
   email: string;
   password: string;
   fullName?: string;
+  phone: string;
   role: UserRole;
   teamId?: string;
+  assignedCity?: string | null;
+  assignedCities?: string[] | null;
   status?: UserStatus;
 }
 
 export class CreateUserUseCase {
   private teamAssignment: TeamAssignmentService;
+  private cityAssignment: CityAssignmentService;
 
   constructor(
     private userRepo: IUserRepository,
     teamRepo: ITeamRepository
   ) {
     this.teamAssignment = new TeamAssignmentService(userRepo, teamRepo);
+    this.cityAssignment = new CityAssignmentService(userRepo);
   }
 
   async execute(dto: CreateUserDTO, actorRole: UserRole) {
@@ -32,9 +39,18 @@ export class CreateUserUseCase {
       throw new AppError('You are not allowed to create a user with this role.', 403);
     }
 
-    const email = dto.email.toLowerCase().trim();
+    const email = dto.email?.toLowerCase().trim();
+    if (!email) throw new AppError('Email is required.', 400);
     if (await this.userRepo.findByEmail(email)) {
-      throw new AppError('Email already in use', 400);
+      throw new AppError('Email already in use.', 400);
+    }
+
+    if (!dto.password || dto.password.length < 8) {
+      throw new AppError('Password must be at least 8 characters.', 400);
+    }
+
+    if (!dto.role) {
+      throw new AppError('Role is required.', 400);
     }
 
     const passwordHash = await bcrypt.hash(dto.password, 10);
@@ -44,6 +60,7 @@ export class CreateUserUseCase {
       email,
       passwordHash,
       fullName: dto.fullName?.trim() || null,
+      phone: parsePhoneInput(dto.phone, { required: true }),
       role: dto.role,
       status,
       teamId: null,
@@ -58,8 +75,17 @@ export class CreateUserUseCase {
       teamId: dto.teamId,
     });
 
+    const cityAssignment = await this.cityAssignment.validateAndResolveCityAssignment({
+      userId,
+      assignedRole: dto.role,
+      assignedCity: dto.assignedCity,
+      assignedCities: dto.assignedCities,
+    });
+
     const updated = await this.userRepo.update(userId, {
       teamId: team?.id ?? null,
+      assignedCity: cityAssignment.assignedCity,
+      assignedCities: cityAssignment.assignedCities,
       status,
       role: dto.role,
     });

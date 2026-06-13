@@ -17,6 +17,8 @@ function mapDoc(doc: {
   role?: string | null;
   status: string;
   teamId?: { toString(): string } | null;
+  assignedCity?: string | null;
+  assignedCities?: string[] | null;
   createdAt?: Date;
   updatedAt?: Date;
 }): User {
@@ -29,6 +31,8 @@ function mapDoc(doc: {
     role: (doc.role as UserRole) ?? null,
     status: doc.status as UserStatus,
     teamId: doc.teamId?.toString() ?? null,
+    assignedCity: doc.assignedCity ?? null,
+    assignedCities: doc.assignedCities ?? [],
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
@@ -96,6 +100,23 @@ export class UserRepository implements IUserRepository {
     return docs.map(mapDoc);
   }
 
+  async findActiveDispatchTeamByCity(city: string): Promise<User | null> {
+    const members = await this.findActiveDispatchTeamMembersByCity(city);
+    return members[0] ?? null;
+  }
+
+  async findActiveDispatchTeamMembersByCity(city: string): Promise<User[]> {
+    const trimmed = city.trim();
+    if (!trimmed) return [];
+    const regex = new RegExp(`^${trimmed.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}$`, 'i');
+    const docs = await UserModel.find({
+      role: UserRole.DISPATCH_TEAM,
+      status: UserStatus.ACTIVE,
+      $or: [{ assignedCity: { $regex: regex } }, { assignedCities: { $regex: regex } }],
+    }).sort({ fullName: 1, email: 1 });
+    return docs.map(mapDoc);
+  }
+
   async save(user: User): Promise<User> {
     const created = await UserModel.create({
       email: user.email,
@@ -105,6 +126,8 @@ export class UserRepository implements IUserRepository {
       role: user.role,
       status: user.status,
       teamId: user.teamId ?? null,
+      assignedCity: user.assignedCity ?? null,
+      assignedCities: user.assignedCities ?? [],
     });
     return mapDoc(created);
   }
@@ -114,6 +137,8 @@ export class UserRepository implements IUserRepository {
       role: update.role,
       status: update.status,
       teamId: update.teamId ?? null,
+      assignedCity: update.assignedCity ?? null,
+      assignedCities: update.assignedCities ?? [],
     });
   }
 
@@ -125,6 +150,8 @@ export class UserRepository implements IUserRepository {
     if (data.role !== undefined) patch.role = data.role;
     if (data.status !== undefined) patch.status = data.status;
     if (data.teamId !== undefined) patch.teamId = data.teamId;
+    if (data.assignedCity !== undefined) patch.assignedCity = data.assignedCity;
+    if (data.assignedCities !== undefined) patch.assignedCities = data.assignedCities;
     if (data.passwordHash !== undefined) patch.password = data.passwordHash;
 
     const doc = await UserModel.findByIdAndUpdate(userId, patch, {

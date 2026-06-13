@@ -12,9 +12,15 @@ export interface PayrollListFilters {
 export interface PayrollBillUpdateData {
   lineItems?: PayrollDriverLine[];
   totalAmount?: number;
+  subtotal?: number;
+  adjustmentsTotal?: number;
+  bonusesTotal?: number;
+  deductionsTotal?: number;
+  overtimeTotal?: number;
   standardRate?: number;
   status?: PayrollStatus;
   note?: string | null;
+  teamLeadAcknowledgedAt?: Date | null;
   sentToTeamLeadAt?: Date | null;
   teamLeadNote?: string | null;
   teamLeadReviewedAt?: Date | null;

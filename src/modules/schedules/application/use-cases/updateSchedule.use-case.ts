@@ -7,6 +7,7 @@ import { parseFutureScheduleDate } from '../utils/scheduleDate';
 import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
+import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 
 export class UpdateScheduleUseCase {
   constructor(
@@ -15,14 +16,19 @@ export class UpdateScheduleUseCase {
     private routeRepo: IRouteRepository
   ) {}
 
-  async execute(scheduleId: string, dto: Record<string, unknown>) {
+  async execute(scheduleId: string, dto: Record<string, unknown>, actor?: CityActor) {
     const existing = await this.scheduleRepo.findById(scheduleId);
     if (!existing) throw new AppError('Schedule not found.', 404);
+    enforceActorCity(actor, existing.city);
 
     const patch: Parameters<IScheduleRepository['update']>[1] = {};
 
     if (dto.date !== undefined) patch.date = parseFutureScheduleDate(String(dto.date));
-    if (dto.city !== undefined) patch.city = String(dto.city).trim();
+    if (dto.city !== undefined) {
+      const city = String(dto.city).trim();
+      enforceActorCity(actor, city);
+      patch.city = city;
+    }
     if (dto.state !== undefined) patch.state = String(dto.state).trim();
     if (dto.storeId !== undefined) {
       const store = await this.storeRepo.findById(String(dto.storeId));

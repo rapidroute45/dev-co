@@ -1,14 +1,15 @@
 import { UserRole } from './roles';
 
-/** Roles dispatch manager may assign when creating/updating users. */
+/** Roles a dispatch manager may assign (not dispatch manager / admin). */
 export const DISPATCH_MANAGER_ASSIGNABLE_ROLES: UserRole[] = [
+  UserRole.DISPATCH_TEAM,
   UserRole.TEAM_LEAD,
   UserRole.TEAM_DRIVER,
   UserRole.DRIVER,
   UserRole.ACCOUNTANT,
 ];
 
-/** Admin may assign any role except creating duplicate admins casually — all roles. */
+/** Admin may assign any role. */
 export const ADMIN_ASSIGNABLE_ROLES: UserRole[] = Object.values(UserRole);
 
 export function canAssignRole(actorRole: UserRole, targetRole: UserRole): boolean {

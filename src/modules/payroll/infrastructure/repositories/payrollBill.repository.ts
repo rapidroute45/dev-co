@@ -12,6 +12,7 @@ import {
 } from '../../domain/interfaces/payroll-repository.interface';
 import { Types } from 'mongoose';
 import { PayrollBillModel } from '../models/payrollBill.model';
+import { driverAdjustmentsRollup } from '../../application/utils/payrollBillRollups';
 
 type RouteLineDoc = {
   routeId: { toString(): string };
@@ -20,6 +21,11 @@ type RouteLineDoc = {
   scheduleDate: Date;
   completedAt?: Date | null;
   rate: number;
+  routeCategory?: string;
+  defaultRate?: number;
+  originalAmount?: number;
+  hasAdjustment?: boolean;
+  adjustmentReason?: string | null;
 };
 
 type DriverLineDoc = {
@@ -45,7 +51,13 @@ type BillDoc = {
   standardRate: number;
   lineItems?: DriverLineDoc[];
   totalAmount: number;
+  subtotal?: number;
+  adjustmentsTotal?: number;
+  bonusesTotal?: number;
+  deductionsTotal?: number;
+  overtimeTotal?: number;
   note?: string | null;
+  teamLeadAcknowledgedAt?: Date | null;
   createdBy: { toString(): string };
   createdByName?: string | null;
   sentToTeamLeadAt?: Date | null;
@@ -60,6 +72,7 @@ type BillDoc = {
 };
 
 function mapRouteLine(doc: RouteLineDoc): PayrollRouteLine {
+  const defaultRate = doc.defaultRate ?? doc.rate;
   return {
     routeId: doc.routeId.toString(),
     routeName: doc.routeName ?? null,
@@ -67,6 +80,11 @@ function mapRouteLine(doc: RouteLineDoc): PayrollRouteLine {
     scheduleDate: doc.scheduleDate,
     completedAt: doc.completedAt ?? null,
     rate: doc.rate,
+    routeCategory: (doc.routeCategory as PayrollRouteLine['routeCategory']) ?? 'SMALL',
+    defaultRate,
+    originalAmount: doc.originalAmount ?? doc.rate,
+    hasAdjustment: doc.hasAdjustment ?? false,
+    adjustmentReason: doc.adjustmentReason ?? null,
   };
 }
 
@@ -85,6 +103,8 @@ function mapDriverLine(doc: DriverLineDoc): PayrollDriverLine {
 }
 
 function mapDoc(doc: BillDoc): PayrollBill {
+  const lineItems = (doc.lineItems ?? []).map(mapDriverLine);
+  const computedRollups = driverAdjustmentsRollup(lineItems);
   return new PayrollBill({
     id: doc._id.toString(),
     teamId: doc.teamId.toString(),
@@ -94,9 +114,15 @@ function mapDoc(doc: BillDoc): PayrollBill {
     periodEnd: doc.periodEnd,
     status: normalizePayrollStatus(doc.status),
     standardRate: doc.standardRate,
-    lineItems: (doc.lineItems ?? []).map(mapDriverLine),
+    lineItems,
     totalAmount: doc.totalAmount,
+    subtotal: doc.subtotal,
+    adjustmentsTotal: doc.adjustmentsTotal,
+    bonusesTotal: doc.bonusesTotal ?? computedRollups.bonusesTotal,
+    deductionsTotal: doc.deductionsTotal ?? computedRollups.deductionsTotal,
+    overtimeTotal: doc.overtimeTotal ?? computedRollups.overtimeTotal,
     note: doc.note ?? null,
+    teamLeadAcknowledgedAt: doc.teamLeadAcknowledgedAt ?? null,
     createdBy: doc.createdBy.toString(),
     createdByName: doc.createdByName ?? '',
     sentToTeamLeadAt: doc.sentToTeamLeadAt ?? null,
@@ -180,6 +206,11 @@ export class PayrollBillRepository implements IPayrollRepository {
       standardRate: bill.standardRate,
       lineItems: bill.lineItems,
       totalAmount: bill.totalAmount,
+      subtotal: bill.subtotal,
+      adjustmentsTotal: bill.adjustmentsTotal,
+      bonusesTotal: bill.bonusesTotal,
+      deductionsTotal: bill.deductionsTotal,
+      overtimeTotal: bill.overtimeTotal,
       note: bill.note,
       createdBy: bill.createdBy,
       createdByName: bill.createdByName,
@@ -194,9 +225,17 @@ export class PayrollBillRepository implements IPayrollRepository {
     const patch: Record<string, unknown> = {};
     if (data.lineItems !== undefined) patch.lineItems = data.lineItems;
     if (data.totalAmount !== undefined) patch.totalAmount = data.totalAmount;
+    if (data.subtotal !== undefined) patch.subtotal = data.subtotal;
+    if (data.adjustmentsTotal !== undefined) patch.adjustmentsTotal = data.adjustmentsTotal;
+    if (data.bonusesTotal !== undefined) patch.bonusesTotal = data.bonusesTotal;
+    if (data.deductionsTotal !== undefined) patch.deductionsTotal = data.deductionsTotal;
+    if (data.overtimeTotal !== undefined) patch.overtimeTotal = data.overtimeTotal;
     if (data.standardRate !== undefined) patch.standardRate = data.standardRate;
     if (data.status !== undefined) patch.status = data.status;
     if (data.note !== undefined) patch.note = data.note;
+    if (data.teamLeadAcknowledgedAt !== undefined) {
+      patch.teamLeadAcknowledgedAt = data.teamLeadAcknowledgedAt;
+    }
     if (data.sentToTeamLeadAt !== undefined) patch.sentToTeamLeadAt = data.sentToTeamLeadAt;
     if (data.teamLeadNote !== undefined) patch.teamLeadNote = data.teamLeadNote;
     if (data.teamLeadReviewedAt !== undefined) patch.teamLeadReviewedAt = data.teamLeadReviewedAt;

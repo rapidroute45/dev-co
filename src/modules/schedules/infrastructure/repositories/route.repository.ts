@@ -8,7 +8,9 @@ import { parseScheduleDate } from '../../application/utils/scheduleDate';
 import { RouteModel } from '../models/route.model';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
+import { OpsVerificationStatus } from '../../../../shared/constants/opsVerification';
 import { ROUTE_ACTIVE_STATUSES } from '../../../../shared/constants/routeStatuses';
+import { RouteCategory } from '../../../../shared/constants/routeCategories';
 
 function mapDoc(doc: {
   _id: { toString(): string };
@@ -17,6 +19,7 @@ function mapDoc(doc: {
   teamId: { toString(): string };
   driverId?: { toString(): string } | null;
   routeName?: string | null;
+  routeCategory?: string;
   location?: string | null;
   vehicleType?: string | null;
   mileage?: number | null;
@@ -35,6 +38,12 @@ function mapDoc(doc: {
   startedAt?: Date | null;
   completedAt?: Date | null;
   deliveryVerification?: string | null;
+  overtimeHours?: number | null;
+  opsVerificationStatus?: string | null;
+  teamVerifiedAt?: Date | null;
+  teamVerifiedBy?: { toString(): string } | null;
+  managerVerifiedAt?: Date | null;
+  managerVerifiedBy?: { toString(): string } | null;
   createdAt?: Date;
   updatedAt?: Date;
 }): Route {
@@ -45,6 +54,7 @@ function mapDoc(doc: {
     teamId: doc.teamId.toString(),
     driverId: doc.driverId?.toString() ?? null,
     routeName: doc.routeName ?? null,
+    routeCategory: (doc.routeCategory as RouteCategory) ?? RouteCategory.SMALL,
     location: doc.location ?? null,
     vehicleType: doc.vehicleType ?? null,
     mileage: doc.mileage ?? null,
@@ -63,6 +73,12 @@ function mapDoc(doc: {
     startedAt: doc.startedAt ?? null,
     completedAt: doc.completedAt ?? null,
     deliveryVerification: (doc.deliveryVerification as DeliveryVerification) ?? null,
+    overtimeHours: doc.overtimeHours ?? 0,
+    opsVerificationStatus: (doc.opsVerificationStatus as OpsVerificationStatus) ?? null,
+    teamVerifiedAt: doc.teamVerifiedAt ?? null,
+    teamVerifiedBy: doc.teamVerifiedBy?.toString() ?? null,
+    managerVerifiedAt: doc.managerVerifiedAt ?? null,
+    managerVerifiedBy: doc.managerVerifiedBy?.toString() ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
@@ -115,6 +131,20 @@ export class RouteRepository implements IRouteRepository {
 
   async countByScheduleDate(scheduleDate: Date, status?: RouteStatus): Promise<number> {
     const query: Record<string, unknown> = { scheduleDate };
+    if (status) query.status = status;
+    return RouteModel.countDocuments(query);
+  }
+
+  async countByScheduleIds(
+    scheduleIds: string[],
+    scheduleDate: Date,
+    status?: RouteStatus
+  ): Promise<number> {
+    if (scheduleIds.length === 0) return 0;
+    const query: Record<string, unknown> = {
+      scheduleDate,
+      scheduleId: { $in: scheduleIds },
+    };
     if (status) query.status = status;
     return RouteModel.countDocuments(query);
   }
@@ -206,15 +236,48 @@ export class RouteRepository implements IRouteRepository {
     teamId: string,
     excludeRouteIds: string[]
   ): Promise<Route[]> {
+    return this.findCompletedByTeamInPeriodExcludingRouteIds(
+      teamId,
+      new Date(0),
+      new Date(8640000000000000),
+      excludeRouteIds
+    );
+  }
+
+  async findCompletedByTeamInPeriodExcludingRouteIds(
+    teamId: string,
+    periodStart: Date,
+    periodEnd: Date,
+    excludeRouteIds: string[]
+  ): Promise<Route[]> {
     const query: Record<string, unknown> = {
       teamId,
       status: RouteStatus.COMPLETED,
       driverId: { $ne: null },
+      scheduleDate: { $gte: periodStart, $lte: periodEnd },
     };
     if (excludeRouteIds.length > 0) {
       query._id = { $nin: excludeRouteIds };
     }
     const docs = await RouteModel.find(query).sort({ scheduleDate: 1, arrivalMinutes: 1 });
+    return docs.map(mapDoc);
+  }
+
+  async findCompletedByScheduleIdsInPeriod(
+    scheduleIds: string[],
+    periodStart?: Date,
+    periodEnd?: Date
+  ): Promise<Route[]> {
+    if (scheduleIds.length === 0) return [];
+    const query: Record<string, unknown> = {
+      scheduleId: { $in: scheduleIds },
+      status: RouteStatus.COMPLETED,
+      driverId: { $ne: null },
+    };
+    if (periodStart && periodEnd) {
+      query.scheduleDate = { $gte: periodStart, $lte: periodEnd };
+    }
+    const docs = await RouteModel.find(query).sort({ scheduleDate: -1, arrivalMinutes: 1 });
     return docs.map(mapDoc);
   }
 
@@ -247,6 +310,7 @@ export class RouteRepository implements IRouteRepository {
       teamId: route.teamId,
       driverId: route.driverId,
       routeName: route.routeName,
+      routeCategory: route.routeCategory,
       location: route.location,
       vehicleType: route.vehicleType,
       mileage: route.mileage,

@@ -12,6 +12,19 @@ import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.us
 import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
+import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
+import { sanitizeRoutePayloadForRole } from '../../../../shared/utils/routeCategoryAccess';
+import { UserRole } from '../../../../shared/constants/roles';
+
+function sanitizeRouteData<T>(data: T, role: UserRole | null | undefined): T {
+  if (Array.isArray(data)) {
+    return data.map((item) => sanitizeRoutePayloadForRole(item as Record<string, unknown>, role)) as T;
+  }
+  if (data && typeof data === 'object') {
+    return sanitizeRoutePayloadForRole(data as Record<string, unknown>, role) as T;
+  }
+  return data;
+}
 
 export class RouteController {
   constructor(
@@ -26,17 +39,18 @@ export class RouteController {
     private listMyRoutesUseCase: ListMyRoutesUseCase,
     private listMyCompletedRoutesUseCase: ListMyCompletedRoutesUseCase,
     private startRouteUseCase: StartRouteUseCase,
-    private routeDeliveryUseCase: RouteDeliveryUseCase
+    private routeDeliveryUseCase: RouteDeliveryUseCase,
+    private listLiveRoutesUseCase: ListLiveRoutesUseCase
   ) {}
 
   create = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
-      const data = await this.createRouteUseCase.execute(req.body, req.user.id);
+      const data = await this.createRouteUseCase.execute(req.body, req.user.id, req.user);
       res.status(201).json({
         success: true,
         message: 'Route created. Driver notified to accept the offer.',
-        data,
+        data: sanitizeRouteData(data, req.user.role),
       });
     } catch (error) {
       next(error);
@@ -51,7 +65,7 @@ export class RouteController {
       );
       res.status(200).json({
         success: true,
-        data: result.items,
+        data: sanitizeRouteData(result.items, req.user?.role),
         count: result.items.length,
         total: result.total,
         page: result.page,
@@ -71,7 +85,7 @@ export class RouteController {
       );
       res.status(200).json({
         success: true,
-        data: result.items,
+        data: sanitizeRouteData(result.items, req.user.role),
         count: result.count,
         date: result.date,
       });
@@ -89,7 +103,7 @@ export class RouteController {
       );
       res.status(200).json({
         success: true,
-        data: result.items,
+        data: sanitizeRouteData(result.items, req.user.role),
         count: result.count,
       });
     } catch (error) {
@@ -127,7 +141,7 @@ export class RouteController {
   getById = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const data = await this.getRouteUseCase.execute(String(req.params.id), req.user);
-      res.status(200).json({ success: true, data });
+      res.status(200).json({ success: true, data: sanitizeRouteData(data, req.user?.role) });
     } catch (error) {
       next(error);
     }
@@ -139,12 +153,13 @@ export class RouteController {
       const data = await this.updateRouteUseCase.execute(
         String(req.params.id),
         req.body,
-        req.user.id
+        req.user.id,
+        req.user
       );
       res.status(200).json({
         success: true,
         message: 'Route updated successfully.',
-        data,
+        data: sanitizeRouteData(data, req.user.role),
       });
     } catch (error) {
       next(error);
@@ -167,12 +182,13 @@ export class RouteController {
       const data = await this.updateRouteUseCase.execute(
         String(req.params.id),
         { driverId },
-        req.user.id
+        req.user.id,
+        req.user
       );
       res.status(200).json({
         success: true,
         message: 'Driver offer sent. The route stays pending until the driver accepts.',
-        data,
+        data: sanitizeRouteData(data, req.user.role),
       });
     } catch (error) {
       next(error);
@@ -209,7 +225,7 @@ export class RouteController {
 
   delete = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await this.deleteRouteUseCase.execute(String(req.params.id));
+      const result = await this.deleteRouteUseCase.execute(String(req.params.id), req.user);
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -218,8 +234,28 @@ export class RouteController {
 
   getTracking = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await this.routeDeliveryUseCase.getTracking(String(req.params.id));
+      const data = await this.routeDeliveryUseCase.getTracking(
+        String(req.params.id),
+        req.user
+      );
       res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  listLive = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const result = await this.listLiveRoutesUseCase.execute(
+        req.query as Record<string, string>,
+        req.user
+      );
+      res.status(200).json({
+        success: true,
+        data: sanitizeRouteData(result.items, req.user?.role),
+        date: result.date,
+        count: result.items.length,
+      });
     } catch (error) {
       next(error);
     }
@@ -241,6 +277,24 @@ export class RouteController {
     }
   };
 
+  completeStop = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const data = await this.routeDeliveryUseCase.completeStop(
+        String(req.params.routeId),
+        String(req.params.stopId),
+        req.user.id
+      );
+      res.status(200).json({
+        success: true,
+        message: data.routeCompleted ? 'Stop completed. Route finished.' : 'Stop completed.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   returnStop = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
@@ -257,7 +311,11 @@ export class RouteController {
         reason,
         customReason
       );
-      res.status(200).json({ success: true, message: 'Stop marked as return.', data });
+      res.status(200).json({
+        success: true,
+        message: data.routeCompleted ? 'Stop marked as return. Route finished.' : 'Stop marked as return.',
+        data,
+      });
     } catch (error) {
       next(error);
     }
@@ -271,7 +329,8 @@ export class RouteController {
       const data = await this.routeDeliveryUseCase.setStopAccessCode(
         String(req.params.routeId),
         String(req.params.stopId),
-        accessCode
+        accessCode,
+        req.user
       );
       res.status(200).json({ success: true, message: 'Access code saved.', data });
     } catch (error) {

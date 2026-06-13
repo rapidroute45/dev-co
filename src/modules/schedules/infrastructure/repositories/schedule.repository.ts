@@ -7,6 +7,7 @@ import {
 import { ScheduleModel } from '../models/schedule.model';
 import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
 import { parseScheduleDate } from '../../application/utils/scheduleDate';
+import { applyCityListFilter } from '../../../../shared/services/cityScope.service';
 
 function mapDoc(doc: {
   _id: { toString(): string };
@@ -37,7 +38,7 @@ function mapDoc(doc: {
 function buildQuery(filters?: ScheduleListFilters) {
   const query: Record<string, unknown> = {};
   if (filters?.date) query.date = parseScheduleDate(filters.date);
-  if (filters?.city) query.city = new RegExp(filters.city.trim(), 'i');
+  applyCityListFilter(query, { city: filters?.city, cities: filters?.cities });
   if (filters?.state) query.state = new RegExp(filters.state.trim(), 'i');
   if (filters?.storeId) query.storeId = filters.storeId;
   if (filters?.status) query.status = filters.status;
@@ -50,6 +51,21 @@ export class ScheduleRepository implements IScheduleRepository {
   async findById(id: string): Promise<Schedule | null> {
     const doc = await ScheduleModel.findById(id);
     return doc ? mapDoc(doc) : null;
+  }
+
+  async findAllIdsByStoreId(storeId: string): Promise<string[]> {
+    const docs = await ScheduleModel.find({ storeId }).select('_id').lean();
+    return docs.map((d) => d._id.toString());
+  }
+
+  async findStoreIdByIds(scheduleIds: string[]): Promise<Map<string, string>> {
+    if (scheduleIds.length === 0) return new Map();
+    const docs = await ScheduleModel.find({ _id: { $in: scheduleIds } })
+      .select('_id storeId')
+      .lean();
+    return new Map(
+      docs.map((d) => [d._id.toString(), d.storeId.toString()])
+    );
   }
 
   async findMany(filters?: ScheduleListFilters): Promise<{ items: Schedule[]; total: number }> {

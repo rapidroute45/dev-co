@@ -4,28 +4,42 @@ import { IStoreRepository } from '../../../stores/domain/interfaces/store-reposi
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
 import { UserRole } from '../../../../shared/constants/roles';
+import { mergeCityListFilter, normalizeCity } from '../../../../shared/services/cityScope.service';
+import {
+  DispatchTeamAttributionService,
+  shouldAttachDispatchTeamAttribution,
+} from '../../../../shared/services/dispatchTeamAttribution.service';
+import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 
 export class ListSchedulesUseCase {
+  private dispatchTeamAttribution: DispatchTeamAttributionService;
+
   constructor(
     private scheduleRepo: IScheduleRepository,
     private storeRepo: IStoreRepository,
-    private routeRepo: IRouteRepository
-  ) {}
+    private routeRepo: IRouteRepository,
+    userRepo: IUserRepository
+  ) {
+    this.dispatchTeamAttribution = new DispatchTeamAttributionService(userRepo);
+  }
 
   async execute(
     query: Record<string, string>,
-    actor?: { role: UserRole | null; teamId?: string | null }
+    actor?: { role: UserRole | null; teamId?: string | null; assignedCity?: string | null; assignedCities?: string[] | null }
   ) {
     const date = query.date?.trim();
     if (!date) {
       throw new AppError('date query parameter is required (YYYY-MM-DD).', 400);
     }
 
+    const cityFilter = mergeCityListFilter(actor, query.city);
+
     const filters: ScheduleListFilters = {
       date,
-      city: query.city?.trim() || undefined,
+      city: cityFilter.city,
+      cities: cityFilter.cities,
       state: query.state?.trim() || undefined,
       storeId: query.storeId?.trim() || undefined,
       page: query.page ? Number(query.page) : 1,
@@ -56,6 +70,11 @@ export class ListSchedulesUseCase {
 
     const { items, total } = await this.scheduleRepo.findMany(filters);
 
+    const attachDispatchTeam = shouldAttachDispatchTeamAttribution(actor?.role);
+    const dispatchTeamByCity = attachDispatchTeam
+      ? await this.dispatchTeamAttribution.mapForCities(items.map((s) => s.city))
+      : null;
+
     const data = await Promise.all(
       items.map(async (schedule) => {
         const [store, routeCount, pendingRouteCount] = await Promise.all([
@@ -63,11 +82,14 @@ export class ListSchedulesUseCase {
           this.routeRepo.countByScheduleId(schedule.id!),
           this.routeRepo.countPendingRoutesByScheduleId(schedule.id!),
         ]);
+        const dispatchTeam = dispatchTeamByCity
+          ? dispatchTeamByCity.get(normalizeCity(schedule.city)) ?? null
+          : undefined;
         return mapScheduleToResponse(
           schedule,
           store ? mapStoreToResponse(store) : null,
           [],
-          { routeCount, pendingRouteCount }
+          { routeCount, pendingRouteCount, dispatchTeam }
         );
       })
     );

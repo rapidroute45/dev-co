@@ -1,5 +1,5 @@
 import { Router } from 'express';
-import { managerGuard } from '../../../../shared/middleware/managerGuard';
+import { dispatchOpsGuard } from '../../../../shared/middleware/dispatchOpsGuard';
 import { scheduleViewerGuard } from '../../../../shared/middleware/scheduleViewerGuard';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { TeamRepository } from '../../../teams/infrastructure/repositories/team.repository';
@@ -10,12 +10,20 @@ import { ScheduleRepository } from '../../infrastructure/repositories/schedule.r
 import { RouteRepository } from '../../infrastructure/repositories/route.repository';
 import { RouteStopRepository } from '../../infrastructure/repositories/routeStop.repository';
 import { RouteStopEnrichmentService } from '../../application/services/routeStopEnrichment.service';
-import { RouteValidationService } from '../../application/services/routeValidation.service';
+import { DwellDetectionService } from '../../application/services/dwellDetection.service';
+import { RouteAutoCompleteService } from '../../application/services/routeAutoComplete.service';
+import { DriverLocationRepository } from '../../infrastructure/repositories/driverLocation.repository';
+import { RouteDwellSessionRepository } from '../../infrastructure/repositories/routeDwellSession.repository';
 import { CreateScheduleUseCase } from '../../application/use-cases/createSchedule.use-case';
 import { ListSchedulesUseCase } from '../../application/use-cases/listSchedules.use-case';
 import { GetScheduleUseCase } from '../../application/use-cases/getSchedule.use-case';
 import { UpdateScheduleUseCase } from '../../application/use-cases/updateSchedule.use-case';
 import { DeleteScheduleUseCase } from '../../application/use-cases/deleteSchedule.use-case';
+import { ListTeamLeadScheduleAlertsUseCase } from '../../application/use-cases/listTeamLeadScheduleAlerts.use-case';
+import { AcknowledgeTeamLeadScheduleAlertUseCase } from '../../application/use-cases/acknowledgeTeamLeadScheduleAlert.use-case';
+import { TeamLeadScheduleAlertRepository } from '../../infrastructure/repositories/teamLeadScheduleAlert.repository';
+import { TeamLeadScheduleAlertService } from '../../application/services/teamLeadScheduleAlert.service';
+import { teamLeadGuard } from '../../../../shared/middleware/teamLeadGuard';
 import { ScheduleController } from '../controllers/schedule.controller';
 
 const router = Router();
@@ -23,30 +31,66 @@ const router = Router();
 const scheduleRepo = new ScheduleRepository();
 const routeRepo = new RouteRepository();
 const routeStopRepo = new RouteStopRepository();
-const routeStopEnrichment = new RouteStopEnrichmentService(routeStopRepo);
 const storeRepo = new StoreRepository();
 const userRepo = new UserRepository();
 const teamRepo = new TeamRepository();
+const routeStopEnrichment = new RouteStopEnrichmentService(routeStopRepo);
+const driverLocationRepo = new DriverLocationRepository();
+const routeDwellSessionRepo = new RouteDwellSessionRepository();
+const notificationRepo = new NotificationRepository();
+const notificationService = new NotificationService(notificationRepo);
+const dwellDetection = new DwellDetectionService(
+  routeDwellSessionRepo,
+  teamRepo,
+  userRepo,
+  notificationService,
+  routeRepo,
+  scheduleRepo
+);
+const routeAutoComplete = new RouteAutoCompleteService(
+  routeRepo,
+  routeStopRepo,
+  driverLocationRepo,
+  dwellDetection
+);
+const teamLeadAlertRepo = new TeamLeadScheduleAlertRepository();
+const teamLeadAlertService = new TeamLeadScheduleAlertService(
+  teamLeadAlertRepo,
+  scheduleRepo,
+  routeRepo,
+  storeRepo,
+  teamRepo
+);
 
 const controller = new ScheduleController(
   new CreateScheduleUseCase(scheduleRepo, storeRepo),
-  new ListSchedulesUseCase(scheduleRepo, storeRepo, routeRepo),
+  new ListSchedulesUseCase(scheduleRepo, storeRepo, routeRepo, userRepo),
   new GetScheduleUseCase(
     scheduleRepo,
     storeRepo,
     routeRepo,
     userRepo,
     teamRepo,
-    routeStopEnrichment
+    routeStopEnrichment,
+    teamLeadAlertService,
+    routeAutoComplete
   ),
   new UpdateScheduleUseCase(scheduleRepo, storeRepo, routeRepo),
-  new DeleteScheduleUseCase(scheduleRepo, routeRepo, routeStopRepo)
+  new DeleteScheduleUseCase(scheduleRepo, routeRepo, routeStopRepo),
+  new ListTeamLeadScheduleAlertsUseCase(teamLeadAlertService),
+  new AcknowledgeTeamLeadScheduleAlertUseCase(teamLeadAlertService)
 );
 
-router.post('/', managerGuard, controller.create);
+router.post('/', dispatchOpsGuard, controller.create);
+router.get('/team-lead/alerts', teamLeadGuard, controller.listTeamLeadAlerts);
+router.post(
+  '/team-lead/alerts/:scheduleId/dismiss',
+  teamLeadGuard,
+  controller.dismissTeamLeadAlert
+);
 router.get('/', scheduleViewerGuard, controller.list);
 router.get('/:id', scheduleViewerGuard, controller.getById);
-router.put('/:id', managerGuard, controller.update);
-router.delete('/:id', managerGuard, controller.delete);
+router.put('/:id', dispatchOpsGuard, controller.update);
+router.delete('/:id', dispatchOpsGuard, controller.delete);
 
 export default router;

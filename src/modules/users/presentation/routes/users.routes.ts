@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { TeamRepository } from '../../../teams/infrastructure/repositories/team.repository';
 import { managerGuard } from '../../../../shared/middleware/managerGuard';
-import { ROLES_REQUIRING_TEAM } from '../../../../shared/constants/roleRequirements';
+import { ROLES_REQUIRING_CITY, ROLES_REQUIRING_TEAM } from '../../../../shared/constants/roleRequirements';
 import { CreateUserUseCase } from '../../application/use-cases/createUser.use-case';
 import { ListUsersUseCase } from '../../application/use-cases/listUsers.use-case';
 import { GetUserUseCase } from '../../application/use-cases/getUser.use-case';
@@ -24,6 +24,10 @@ const controller = new UsersController(
 
 router.get('/roles-requiring-team', managerGuard, (_req: import('express').Request, res: import('express').Response) => {
   res.status(200).json({ success: true, data: ROLES_REQUIRING_TEAM });
+});
+
+router.get('/roles-requiring-city', managerGuard, (_req: import('express').Request, res: import('express').Response) => {
+  res.status(200).json({ success: true, data: ROLES_REQUIRING_CITY });
 });
 
 router.post('/', managerGuard, controller.create);

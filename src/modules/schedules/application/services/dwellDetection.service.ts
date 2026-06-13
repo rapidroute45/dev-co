@@ -8,14 +8,18 @@ import { UserRole } from '../../../../shared/constants/roles';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { NotificationService } from '../../../notifications/application/services/notification.service';
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
+import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
+import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { RouteDwellSessionRepository } from '../../infrastructure/repositories/routeDwellSession.repository';
 import { haversineMeters } from '../utils/haversine';
+import { emitDriverStationaryAlert } from '../../../chat/socket/chat.socket';
 
 export type DwellEvaluationResult = {
   active: boolean;
   minutes: number;
   alertSent: boolean;
   sessionId: string | null;
+  startedAt: string | null;
 };
 
 export class DwellDetectionService {
@@ -23,7 +27,9 @@ export class DwellDetectionService {
     private dwellSessionRepo: RouteDwellSessionRepository,
     private teamRepo: ITeamRepository,
     private userRepo: IUserRepository,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private routeRepo: IRouteRepository,
+    private scheduleRepo: IScheduleRepository
   ) {}
 
   async evaluateLocationPing(params: {
@@ -171,7 +177,13 @@ export class DwellDetectionService {
     dwellMs: number,
     _recordedAt: Date
   ): Promise<{ notificationIds: string[]; recipientIds: string[] }> {
-    const recipientIds = await this.resolveDwellAlertRecipients(session.teamLeadId);
+    const route = await this.routeRepo.findById(session.routeId);
+    const schedule = route ? await this.scheduleRepo.findById(route.scheduleId) : null;
+
+    const recipientIds = await this.resolveDwellAlertRecipients(
+      session.teamLeadId,
+      schedule?.city
+    );
     console.log('[dwell-notify]', {
       routeId: session.routeId,
       dwellSessionId: session.id,
@@ -202,15 +214,29 @@ export class DwellDetectionService {
       startedAt: session.startedAt.toISOString(),
     });
 
+    emitDriverStationaryAlert({
+      routeId: session.routeId,
+      scheduleId: route?.scheduleId ?? '',
+      driverId: session.driverId,
+      driverName,
+      dwellMinutes,
+      lat: session.centerLat,
+      lng: session.centerLng,
+      city: schedule?.city ?? '',
+      state: schedule?.state ?? '',
+      routeName: route?.routeName ?? null,
+    });
+
     return {
       notificationIds: notifications.map((n) => n.id).filter((id): id is string => Boolean(id)),
       recipientIds,
     };
   }
 
-  /** All active admins (+ dispatch managers, optional team lead) for dwell alerts. */
+  /** Admins, dispatch managers, dispatch team (city), and optional team lead. */
   private async resolveDwellAlertRecipients(
-    teamLeadId: string | null
+    teamLeadId: string | null,
+    scheduleCity?: string | null
   ): Promise<string[]> {
     const ids = new Set<string>();
 
@@ -234,6 +260,15 @@ export class DwellDetectionService {
       );
     }
 
+    if (scheduleCity?.trim()) {
+      const dispatchTeam = await this.userRepo.findActiveDispatchTeamMembersByCity(
+        scheduleCity.trim()
+      );
+      for (const member of dispatchTeam) {
+        if (member.id) ids.add(member.id);
+      }
+    }
+
     if (teamLeadId) ids.add(teamLeadId);
 
     return [...ids];
@@ -255,6 +290,7 @@ export class DwellDetectionService {
       minutes,
       alertSent: Boolean(session.alertSentAt),
       sessionId: session.id,
+      startedAt: session.startedAt.toISOString(),
     };
   }
 }

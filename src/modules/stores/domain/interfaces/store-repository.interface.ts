@@ -3,6 +3,7 @@ import { StoreActiveStatus } from '../../../../shared/constants/storeStatuses';
 
 export interface StoreListFilters {
   city?: string;
+  cities?: string[];
   state?: string;
   search?: string;
   activeStatus?: StoreActiveStatus;

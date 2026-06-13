@@ -1,11 +1,14 @@
 import { Route } from '../entities/route.entity';
 import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
+import { OpsVerificationStatus } from '../../../../shared/constants/opsVerification';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
+import { RouteCategory } from '../../../../shared/constants/routeCategories';
 
 export interface RouteUpdateData {
   teamId?: string;
   driverId?: string | null;
   routeName?: string | null;
+  routeCategory?: RouteCategory;
   location?: string | null;
   vehicleType?: string | null;
   mileage?: number | null;
@@ -24,6 +27,12 @@ export interface RouteUpdateData {
   startedAt?: Date | null;
   completedAt?: Date | null;
   deliveryVerification?: DeliveryVerification | null;
+  overtimeHours?: number;
+  opsVerificationStatus?: OpsVerificationStatus | null;
+  teamVerifiedAt?: Date | null;
+  teamVerifiedBy?: string | null;
+  managerVerifiedAt?: Date | null;
+  managerVerifiedBy?: string | null;
 }
 
 export interface RouteListFilters {
@@ -43,6 +52,11 @@ export interface IRouteRepository {
   countByScheduleId(scheduleId: string): Promise<number>;
   countPendingRoutesByScheduleId(scheduleId: string): Promise<number>;
   countByScheduleDate(scheduleDate: Date, status?: RouteStatus): Promise<number>;
+  countByScheduleIds(
+    scheduleIds: string[],
+    scheduleDate: Date,
+    status?: RouteStatus
+  ): Promise<number>;
   countByTeamAndScheduleDate(teamId: string, scheduleDate: Date, status?: RouteStatus): Promise<number>;
   findBusyDriverIdsOnDate(scheduleDate: Date): Promise<string[]>;
   findManyByDriverId(
@@ -54,6 +68,17 @@ export interface IRouteRepository {
   findCompletedByTeamExcludingRouteIds(
     teamId: string,
     excludeRouteIds: string[]
+  ): Promise<Route[]>;
+  findCompletedByTeamInPeriodExcludingRouteIds(
+    teamId: string,
+    periodStart: Date,
+    periodEnd: Date,
+    excludeRouteIds: string[]
+  ): Promise<Route[]>;
+  findCompletedByScheduleIdsInPeriod(
+    scheduleIds: string[],
+    periodStart?: Date,
+    periodEnd?: Date
   ): Promise<Route[]>;
   findOverlappingForDriver(params: {
     driverId: string;

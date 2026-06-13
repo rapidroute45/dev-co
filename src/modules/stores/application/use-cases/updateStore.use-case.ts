@@ -3,13 +3,15 @@ import { STORE_ACTIVE_STATUSES, StoreActiveStatus } from '../../../../shared/con
 import { IStoreRepository } from '../../domain/interfaces/store-repository.interface';
 import { mapStoreToResponse } from '../mappers/storeResponse.mapper';
 import { UpdateStoreDTO } from '../dto/update-store.dto';
+import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 
 export class UpdateStoreUseCase {
   constructor(private storeRepo: IStoreRepository) {}
 
-  async execute(id: string, dto: UpdateStoreDTO) {
+  async execute(id: string, dto: UpdateStoreDTO, actor?: CityActor) {
     const existing = await this.storeRepo.findById(id);
     if (!existing) throw new AppError('Store not found.', 404);
+    enforceActorCity(actor, existing.city);
 
     const patch: Parameters<IStoreRepository['update']>[1] = {};
 
@@ -23,6 +25,7 @@ export class UpdateStoreUseCase {
     if (dto.city !== undefined) {
       const city = dto.city.trim();
       if (!city) throw new AppError('City is required.', 400);
+      enforceActorCity(actor, city);
       patch.city = city;
     }
     if (dto.state !== undefined) {

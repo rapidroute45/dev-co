@@ -4,6 +4,8 @@ import { LoginDTO } from '../dto/login.dto';
 import { IUserRepository } from '../../domain/interfaces/user-repository.interface';
 import { AppError } from '../../../../shared/errors/app-error';
 import { ENV } from '../../../../config/env';
+import { UserRole } from '../../../../shared/constants/roles';
+import { resolveUserAssignedCities } from '../../../users/application/mappers/userResponse.mapper';
 
 export class LoginUseCase {
   constructor(private userRepo: IUserRepository) {}
@@ -20,6 +22,8 @@ export class LoginUseCase {
     }
 
     // Generate token payload utilizing internal Domain values
+    const assignedCities = resolveUserAssignedCities(user);
+
     const token = jwt.sign(
       {
         id: user.id,
@@ -27,6 +31,8 @@ export class LoginUseCase {
         role: user.role,
         status: user.status,
         teamId: user.teamId ?? null,
+        assignedCity: user.assignedCity ?? null,
+        assignedCities,
       },
       ENV.JWT_SECRET,
       { expiresIn: ENV.JWT_ACCESS_EXPIRES_IN } as jwt.SignOptions
@@ -37,9 +43,16 @@ export class LoginUseCase {
       user: {
         id: user.id,
         email: user.email,
+        fullName: user.fullName,
+        phone: user.phone,
         role: user.role,
         status: user.status,
         teamId: user.teamId ?? null,
+        assignedCity:
+          user.role === UserRole.DISPATCH_TEAM
+            ? assignedCities[0] ?? null
+            : user.assignedCity ?? null,
+        assignedCities,
       },
     };
   }
