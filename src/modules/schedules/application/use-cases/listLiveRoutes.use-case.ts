@@ -11,6 +11,8 @@ import { mapStopsToResponse } from '../utils/routeStops';
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
 import { mergeCityListFilter, enforceActorCity } from '../../../../shared/services/cityScope.service';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
+import { RouteDwellSessionRepository } from '../../infrastructure/repositories/routeDwellSession.repository';
+import { DWELL_THRESHOLD_MINUTES } from '../../../../shared/constants/dwellDetection';
 
 const TRACKING_ROLES = new Set([
   UserRole.ADMIN,
@@ -26,7 +28,8 @@ export class ListLiveRoutesUseCase {
     private storeRepo: IStoreRepository,
     private userRepo: IUserRepository,
     private teamRepo: ITeamRepository,
-    private routeStopEnrichment: RouteStopEnrichmentService
+    private routeStopEnrichment: RouteStopEnrichmentService,
+    private dwellSessionRepo: RouteDwellSessionRepository
   ) {}
 
   async execute(
@@ -74,6 +77,10 @@ export class ListLiveRoutesUseCase {
       limit: 200,
     });
 
+    const routeIds = routes.map((r) => r.id!).filter(Boolean);
+    const dwellByRoute = await this.dwellSessionRepo.findActiveByRouteIds(routeIds);
+    const now = new Date();
+
     const scheduleCache = new Map<string, Awaited<ReturnType<IScheduleRepository['findById']>>>();
     const storeCache = new Map<string, Awaited<ReturnType<IStoreRepository['findById']>>>();
 
@@ -120,6 +127,7 @@ export class ListLiveRoutesUseCase {
       items.push({
         ...enriched,
         progress: mappedStops.progress,
+        dwell: mapDwellSummary(dwellByRoute.get(route.id!) ?? null, now),
         schedule: {
           id: schedule.id,
           date: schedule.date,
@@ -133,4 +141,22 @@ export class ListLiveRoutesUseCase {
 
     return { items, date };
   }
+}
+
+function mapDwellSummary(
+  session: Awaited<ReturnType<RouteDwellSessionRepository['findActiveByRoute']>>,
+  at: Date
+) {
+  if (!session) {
+    return { active: false, minutes: 0, alertSent: false, startedAt: null as string | null };
+  }
+  const dwellMs = at.getTime() - session.startedAt.getTime();
+  const minutes = Math.max(0, Math.floor(dwellMs / 60_000));
+  return {
+    active: true,
+    minutes,
+    alertSent: Boolean(session.alertSentAt),
+    thresholdMinutes: DWELL_THRESHOLD_MINUTES,
+    startedAt: session.startedAt.toISOString(),
+  };
 }

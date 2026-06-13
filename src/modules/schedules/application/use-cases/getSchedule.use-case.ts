@@ -1,4 +1,5 @@
 import { AppError } from '../../../../shared/errors/app-error';
+import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { IStoreRepository } from '../../../stores/domain/interfaces/store-repository.interface';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
@@ -14,6 +15,7 @@ import {
   shouldAttachDispatchTeamAttribution,
 } from '../../../../shared/services/dispatchTeamAttribution.service';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
+import { RouteAutoCompleteService } from '../services/routeAutoComplete.service';
 import { TeamLeadScheduleAlertService } from '../services/teamLeadScheduleAlert.service';
 
 export class GetScheduleUseCase {
@@ -26,7 +28,8 @@ export class GetScheduleUseCase {
     private userRepo: IUserRepository,
     private teamRepo: ITeamRepository,
     private routeStopEnrichment: RouteStopEnrichmentService,
-    private teamLeadAlertService: TeamLeadScheduleAlertService
+    private teamLeadAlertService: TeamLeadScheduleAlertService,
+    private routeAutoComplete: RouteAutoCompleteService
   ) {
     this.dispatchTeamAttribution = new DispatchTeamAttributionService(userRepo);
   }
@@ -61,6 +64,14 @@ export class GetScheduleUseCase {
         routes = routes.filter((r) => r.teamId === teamId);
       }
     }
+
+    routes = await Promise.all(
+      routes.map(async (route) => {
+        if (!route.id || route.status !== RouteStatus.IN_PROGRESS) return route;
+        const completed = await this.routeAutoComplete.maybeComplete(route.id);
+        return completed ?? route;
+      })
+    );
 
     const routeResponses = await this.routeStopEnrichment.enrichRoutes(
       routes,

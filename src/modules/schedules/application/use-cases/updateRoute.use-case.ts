@@ -29,6 +29,7 @@ import { UserRole } from '../../../../shared/constants/roles';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { emitRouteUpdated } from '../../../chat/socket/chat.socket';
 import { TeamLeadScheduleAlertService } from '../services/teamLeadScheduleAlert.service';
+import { RouteAutoCompleteService } from '../services/routeAutoComplete.service';
 
 export class UpdateRouteUseCase {
   constructor(
@@ -42,7 +43,8 @@ export class UpdateRouteUseCase {
     private routeStopEnrichment: RouteStopEnrichmentService,
     private addressCodeRepo: AddressAccessCodeRepository,
     private userRepo: IUserRepository,
-    private teamLeadAlertService: TeamLeadScheduleAlertService
+    private teamLeadAlertService: TeamLeadScheduleAlertService,
+    private routeAutoComplete: RouteAutoCompleteService
   ) {}
 
   async execute(
@@ -384,7 +386,10 @@ export class UpdateRouteUseCase {
       });
     }
 
-    return this.routeStopEnrichment.enrichRoute(updated, {
+    const reconciled = await this.routeAutoComplete.maybeComplete(updated.id!);
+    const routeToReturn = reconciled ?? updated;
+
+    return this.routeStopEnrichment.enrichRoute(routeToReturn, {
       teamName: team.name,
       teamCode: team.code,
       driverEmail: driver?.email,

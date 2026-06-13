@@ -253,6 +253,13 @@ export type DriverLocationUpdatedPayload = {
   };
   autoCompletedStops?: { stopId: string; stopName: string }[];
   routeCompleted?: boolean;
+  dwell?: {
+    active: boolean;
+    minutes: number;
+    alertSent: boolean;
+    thresholdMinutes?: number;
+    startedAt?: string | null;
+  };
 };
 
 export function emitDriverLocationUpdated(payload: DriverLocationUpdatedPayload) {

@@ -9,6 +9,7 @@ import {
   geocodeAddress,
   type GeocodeContext,
 } from '../utils/geocodeAddress';
+import { hasGoogleMapsApiKey } from '../../../../shared/constants/googleMaps';
 
 /** Above this count, skip blocking geocode calls during save. */
 export const BULK_STOP_GEOCODE_THRESHOLD = 5;
@@ -33,6 +34,9 @@ function coordsFromInput(input: StopDetailInput): { lat: number | null; lng: num
 }
 
 async function rateLimitedGeocode(address: string, context: GeocodeContext) {
+  if (hasGoogleMapsApiKey()) {
+    return geocodeAddress(address, context);
+  }
   const waitMs = Math.max(0, lastGeocodeRequestAt + NOMINATIM_MIN_INTERVAL_MS - Date.now());
   if (waitMs > 0) await sleep(waitMs);
   lastGeocodeRequestAt = Date.now();

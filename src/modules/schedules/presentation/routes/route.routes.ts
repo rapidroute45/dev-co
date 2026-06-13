@@ -20,6 +20,7 @@ import { RouteDwellSessionRepository } from '../../infrastructure/repositories/r
 import { RouteValidationService } from '../../application/services/routeValidation.service';
 import { ScheduleActivationService } from '../../application/services/scheduleActivation.service';
 import { DwellDetectionService } from '../../application/services/dwellDetection.service';
+import { RouteAutoCompleteService } from '../../application/services/routeAutoComplete.service';
 import { StopProximityService } from '../../application/services/stopProximity.service';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 import { CreateRouteUseCase } from '../../application/use-cases/createRoute.use-case';
@@ -60,6 +61,12 @@ const dwellDetection = new DwellDetectionService(
   routeRepo,
   scheduleRepo
 );
+const routeAutoComplete = new RouteAutoCompleteService(
+  routeRepo,
+  routeStopRepo,
+  driverLocationRepo,
+  dwellDetection
+);
 
 const routeValidation = new RouteValidationService(
   scheduleRepo,
@@ -85,6 +92,7 @@ const routeDelivery = new RouteDeliveryUseCase(
   routeStopEnrichment,
   dwellDetection,
   stopProximity,
+  routeAutoComplete,
   notificationService,
   userRepo,
   scheduleRepo,
@@ -98,7 +106,8 @@ const listLiveRoutes = new ListLiveRoutesUseCase(
   storeRepo,
   userRepo,
   teamRepo,
-  routeStopEnrichment
+  routeStopEnrichment,
+  routeDwellSessionRepo
 );
 
 const controller = new RouteController(
@@ -126,7 +135,8 @@ const controller = new RouteController(
     routeStopEnrichment,
     addressCodeRepo,
     userRepo,
-    teamLeadAlertService
+    teamLeadAlertService,
+    routeAutoComplete
   ),
   new DeleteRouteUseCase(
     routeRepo,

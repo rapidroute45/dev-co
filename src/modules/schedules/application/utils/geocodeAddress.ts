@@ -1,3 +1,5 @@
+import { GOOGLE_MAPS_API_KEY, hasGoogleMapsApiKey } from '../../../../shared/constants/googleMaps';
+
 const geocodeCache = new Map<string, { lat: number; lng: number }>();
 
 export type GeocodeContext = {
@@ -39,13 +41,56 @@ function buildAddressVariants(address: string, context?: GeocodeContext): string
   return variants;
 }
 
-export async function geocodeAddress(
+async function geocodeWithGoogle(
+  address: string,
+  context?: GeocodeContext
+): Promise<{ lat: number; lng: number } | null> {
+  if (!hasGoogleMapsApiKey()) return null;
+
+  const variants = buildAddressVariants(address, context);
+  for (const variant of variants) {
+    const key = variant.toLowerCase();
+    const cached = geocodeCache.get(key);
+    if (cached) return cached;
+
+    try {
+      const q = encodeURIComponent(variant);
+      const url = `https://maps.googleapis.com/maps/api/geocode/json?address=${q}&key=${GOOGLE_MAPS_API_KEY}`;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8_000);
+      const res = await fetch(url, { signal: controller.signal });
+      clearTimeout(timeout);
+      if (!res.ok) continue;
+
+      const data = (await res.json()) as {
+        status?: string;
+        results?: { geometry?: { location?: { lat?: number; lng?: number } } }[];
+      };
+      if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') continue;
+
+      const loc = data.results?.[0]?.geometry?.location;
+      if (loc?.lat == null || loc?.lng == null) continue;
+
+      const lat = Number(loc.lat);
+      const lng = Number(loc.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+      const coords = { lat, lng };
+      geocodeCache.set(key, coords);
+      return coords;
+    } catch {
+      /* try next variant */
+    }
+  }
+
+  return null;
+}
+
+async function geocodeWithNominatim(
   address: string,
   context?: GeocodeContext
 ): Promise<{ lat: number; lng: number } | null> {
   const variants = buildAddressVariants(address, context);
-  if (variants.length === 0) return null;
-
   for (const variant of variants) {
     const key = variant.toLowerCase();
     const cached = geocodeCache.get(key);
@@ -80,4 +125,16 @@ export async function geocodeAddress(
   }
 
   return null;
+}
+
+export async function geocodeAddress(
+  address: string,
+  context?: GeocodeContext
+): Promise<{ lat: number; lng: number } | null> {
+  if (!address.trim()) return null;
+
+  const google = await geocodeWithGoogle(address, context);
+  if (google) return google;
+
+  return geocodeWithNominatim(address, context);
 }

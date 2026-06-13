@@ -19,6 +19,7 @@ export type DwellEvaluationResult = {
   minutes: number;
   alertSent: boolean;
   sessionId: string | null;
+  startedAt: string | null;
 };
 
 export class DwellDetectionService {
@@ -289,6 +290,7 @@ export class DwellDetectionService {
       minutes,
       alertSent: Boolean(session.alertSentAt),
       sessionId: session.id,
+      startedAt: session.startedAt.toISOString(),
     };
   }
 }
