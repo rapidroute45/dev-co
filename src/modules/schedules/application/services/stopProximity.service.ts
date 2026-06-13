@@ -113,7 +113,7 @@ export class StopProximityService {
     );
 
     return {
-      atPickup: distanceMeters <= STOP_APPROACH_RADIUS_METERS,
+      atPickup: distanceMeters <= 100,
       pickupName: pickup.name,
       distanceMeters: Math.round(distanceMeters),
     };
