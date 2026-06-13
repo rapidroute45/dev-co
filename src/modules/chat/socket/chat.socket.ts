@@ -260,6 +260,7 @@ export type DriverLocationUpdatedPayload = {
     thresholdMinutes?: number;
     startedAt?: string | null;
   };
+  backgroundSharing?: boolean;
 };
 
 export function emitDriverLocationUpdated(payload: DriverLocationUpdatedPayload) {

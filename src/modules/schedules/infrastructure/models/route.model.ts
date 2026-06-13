@@ -38,6 +38,7 @@ const RouteSchema = new Schema(
     driverLat: { type: Number, default: null },
     driverLng: { type: Number, default: null },
     driverLocationAt: { type: Date, default: null },
+    driverLocationBackgroundSharing: { type: Boolean, default: false },
     startedAt: { type: Date, default: null },
     completedAt: { type: Date, default: null },
     deliveryVerification: {

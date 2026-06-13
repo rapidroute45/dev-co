@@ -56,6 +56,7 @@ export class RouteAutoCompleteService {
       totalMiles: totalMiles > 0 ? totalMiles : route.mileage,
       completedAt,
       overtimeHours,
+      driverLocationBackgroundSharing: false,
     });
     if (!updated) throw new AppError('Failed to complete route.', 500);
 

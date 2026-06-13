@@ -10,6 +10,7 @@ import { resolveDisplayName } from '../../../../shared/utils/displayName';
 import { UserRole } from '../../../../shared/constants/roles';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 import { enforceActorCity } from '../../../../shared/services/cityScope.service';
+import { scheduleGeocodeContext } from '../utils/geocodeContext';
 
 export class GetRouteUseCase {
   constructor(
@@ -56,20 +57,33 @@ export class GetRouteUseCase {
       : null;
     const store = schedule ? await this.storeRepo.findById(schedule.storeId) : null;
 
-    const enriched = await this.routeStopEnrichment.enrichRoute(route, {
-      teamName: team?.name,
-      teamCode: team?.code,
-      driverEmail: driver?.email,
-      driverName: driver ? resolveDisplayName(driver.fullName, driver.email) : null,
-      driverLocation:
-        route.driverLat != null && route.driverLng != null
-          ? {
-              lat: route.driverLat,
-              lng: route.driverLng,
-              updatedAt: route.driverLocationAt,
-            }
-          : null,
-    });
+    const enriched = await this.routeStopEnrichment.enrichRoute(
+      route,
+      {
+        teamName: team?.name,
+        teamCode: team?.code,
+        driverEmail: driver?.email,
+        driverName: driver ? resolveDisplayName(driver.fullName, driver.email) : null,
+        driverLocation:
+          route.driverLat != null && route.driverLng != null
+            ? {
+                lat: route.driverLat,
+                lng: route.driverLng,
+                updatedAt: route.driverLocationAt,
+                sharingInBackground: route.driverLocationBackgroundSharing,
+              }
+            : null,
+      },
+      schedule
+        ? {
+            geocodeContext: scheduleGeocodeContext({
+              city: schedule.city,
+              state: schedule.state,
+              storeState: schedule.state,
+            }),
+          }
+        : undefined
+    );
 
     return {
       ...enriched,

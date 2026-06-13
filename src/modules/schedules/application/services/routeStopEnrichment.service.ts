@@ -2,14 +2,25 @@ import { IRouteStopRepository } from '../../domain/interfaces/route-stop-reposit
 import { mapStopsToResponse } from '../utils/routeStops';
 import { mapRouteToResponse } from '../mappers/scheduleResponse.mapper';
 import type { Route } from '../../domain/entities/route.entity';
+import type { GeocodeContext } from '../utils/geocodeAddress';
+import { geocodeMissingRouteStops } from './routeStopGeo.service';
 
 export class RouteStopEnrichmentService {
   constructor(private routeStopRepo: IRouteStopRepository) {}
 
   async enrichRoute(
     route: Route,
-    extras?: Parameters<typeof mapRouteToResponse>[1]
+    extras?: Parameters<typeof mapRouteToResponse>[1],
+    options?: { geocodeContext?: GeocodeContext }
   ) {
+    if (options?.geocodeContext && route.id) {
+      await geocodeMissingRouteStops({
+        routeStopRepo: this.routeStopRepo,
+        routeId: route.id,
+        geocodeContext: options.geocodeContext,
+      });
+    }
+
     const stops = await this.routeStopRepo.findByRouteId(route.id!);
     const mapped = mapStopsToResponse(stops);
     return mapRouteToResponse(route, {
