@@ -68,6 +68,10 @@ export class TeamLeadScheduleAlertRepository implements ITeamLeadScheduleAlertRe
     await TeamLeadScheduleAlertModel.deleteOne({ scheduleId, teamId });
   }
 
+  async deleteByScheduleId(scheduleId: string): Promise<void> {
+    await TeamLeadScheduleAlertModel.deleteMany({ scheduleId });
+  }
+
   async listPendingForTeamLead(teamLeadId: string): Promise<TeamLeadScheduleAlertRecord[]> {
     const docs = await TeamLeadScheduleAlertModel.find({
       teamLeadId,

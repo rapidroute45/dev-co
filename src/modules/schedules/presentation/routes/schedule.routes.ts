@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { dispatchOpsGuard } from '../../../../shared/middleware/dispatchOpsGuard';
+import { managerGuard } from '../../../../shared/middleware/managerGuard';
 import { scheduleViewerGuard } from '../../../../shared/middleware/scheduleViewerGuard';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { TeamRepository } from '../../../teams/infrastructure/repositories/team.repository';
@@ -76,7 +77,13 @@ const controller = new ScheduleController(
     routeAutoComplete
   ),
   new UpdateScheduleUseCase(scheduleRepo, storeRepo, routeRepo),
-  new DeleteScheduleUseCase(scheduleRepo, routeRepo, routeStopRepo),
+  new DeleteScheduleUseCase(
+    scheduleRepo,
+    routeRepo,
+    routeStopRepo,
+    driverLocationRepo,
+    teamLeadAlertRepo
+  ),
   new ListTeamLeadScheduleAlertsUseCase(teamLeadAlertService),
   new AcknowledgeTeamLeadScheduleAlertUseCase(teamLeadAlertService)
 );
@@ -91,6 +98,6 @@ router.post(
 router.get('/', scheduleViewerGuard, controller.list);
 router.get('/:id', scheduleViewerGuard, controller.getById);
 router.put('/:id', dispatchOpsGuard, controller.update);
-router.delete('/:id', dispatchOpsGuard, controller.delete);
+router.delete('/:id', managerGuard, controller.delete);
 
 export default router;
