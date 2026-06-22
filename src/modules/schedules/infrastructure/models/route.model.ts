@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import {
   DEFAULT_ROUTE_CATEGORY,
@@ -56,6 +57,16 @@ const RouteSchema = new Schema(
     teamVerifiedBy: { type: Types.ObjectId, ref: 'User', default: null },
     managerVerifiedAt: { type: Date, default: null },
     managerVerifiedBy: { type: Types.ObjectId, ref: 'User', default: null },
+    driverRoutePath: {
+      type: [
+        {
+          lat: { type: Number, required: true },
+          lng: { type: Number, required: true },
+          recordedAt: { type: Date, required: true },
+        },
+      ],
+      default: [],
+    },
   },
   { timestamps: true }
 );
@@ -63,4 +74,4 @@ const RouteSchema = new Schema(
 RouteSchema.index({ driverId: 1, scheduleDate: 1, arrivalMinutes: 1, departureMinutes: 1 });
 RouteSchema.index({ teamId: 1, scheduleDate: 1 });
 
-export const RouteModel = model('Route', RouteSchema);
+export const RouteModel = createScopedModel('Route', RouteSchema);

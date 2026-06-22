@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const documentRequirementSchema = new mongoose.Schema(
   {
@@ -20,7 +21,7 @@ const documentRequirementSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export const DocumentRequirementModel = mongoose.model(
+export const DocumentRequirementModel = createScopedModel(
   'DocumentRequirement',
   documentRequirementSchema
 );

@@ -10,7 +10,7 @@ import { mapRouteToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { formatScheduleDate } from '../utils/scheduleDate';
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
-import { mergeCityListFilter, normalizeCity } from '../../../../shared/services/cityScope.service';
+import { mergeCityListFilter, normalizeCity, resolveGlobalLocationQuery } from '../../../../shared/services/cityScope.service';
 import {
   DispatchTeamAttributionService,
   shouldAttachDispatchTeamAttribution,
@@ -64,16 +64,11 @@ export class ListRoutesUseCase {
       filters.teamId = actor.teamId;
     }
 
-    const state = query.state?.trim();
-    const storeId = query.storeId?.trim();
+    const scopedQuery = resolveGlobalLocationQuery(actor, query);
+    const state = scopedQuery.state?.trim();
+    const storeId = scopedQuery.storeId?.trim();
 
-    // Team leads: optional location filter only — never city-scoped like dispatch team.
-    const cityFilter =
-      actor?.role === UserRole.TEAM_LEAD
-        ? query.city?.trim()
-          ? { city: query.city.trim() }
-          : {}
-        : mergeCityListFilter(actor, query.city);
+    const cityFilter = mergeCityListFilter(actor, scopedQuery.city);
 
     if (cityFilter.city || cityFilter.cities?.length || state || storeId) {
       const { items: schedules } = await this.scheduleRepo.findMany({
@@ -150,6 +145,7 @@ export class ListRoutesUseCase {
                 city: schedule.city,
                 state: schedule.state,
                 storeId: schedule.storeId,
+                createdBy: schedule.createdBy,
                 store,
                 dispatchTeam: dispatchTeamByCity
                   ? dispatchTeamByCity.get(normalizeCity(schedule.city)) ?? null

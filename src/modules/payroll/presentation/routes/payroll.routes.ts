@@ -3,6 +3,7 @@ import { UserRole } from '../../../../shared/constants/roles';
 import { requireAuth } from '../../../../shared/middleware/auth.middleware';
 import { requireRoles } from '../../../../shared/middleware/role.middleware';
 import { managerGuard } from '../../../../shared/middleware/managerGuard';
+import { requirePayrollElevation } from '../../../../shared/middleware/opsElevation.middleware';
 import { teamLeadGuard } from '../../../../shared/middleware/teamLeadGuard';
 import { uploadMiddleware } from '../../../../shared/upload/upload.config';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
@@ -162,7 +163,7 @@ const payrollSettingsGuard = [
 ];
 
 router.get('/settings', payrollSettingsGuard, controller.getSettings);
-router.put('/settings', payrollSettingsGuard, controller.updateSettings);
+router.put('/settings', [...payrollSettingsGuard, requirePayrollElevation], controller.updateSettings);
 router.get(
   '/settings/stores/:storeId',
   payrollSettingsGuard,
@@ -170,11 +171,11 @@ router.get(
 );
 router.put(
   '/settings/stores/:storeId',
-  payrollSettingsGuard,
+  [...payrollSettingsGuard, requirePayrollElevation],
   controller.updatePayrollRates
 );
 router.get('/store-billing-settings', payrollSettingsGuard, controller.getStoreBillingSettings);
-router.put('/store-billing-settings', payrollSettingsGuard, controller.updateStoreBillingSettings);
+router.put('/store-billing-settings', [...payrollSettingsGuard, requirePayrollElevation], controller.updateStoreBillingSettings);
 router.get(
   '/store-billing-settings/stores/:storeId',
   payrollSettingsGuard,
@@ -182,34 +183,34 @@ router.get(
 );
 router.put(
   '/store-billing-settings/stores/:storeId',
-  payrollSettingsGuard,
+  [...payrollSettingsGuard, requirePayrollElevation],
   controller.updateStoreBillingRates
 );
 router.get('/store-payroll/summary', payrollViewerGuard, controller.storePayrollSummary);
 router.get('/store-payroll/stores/:storeId', payrollViewerGuard, controller.storePayrollDetail);
 router.get('/store-invoice/bill-tos', payrollSettingsGuard, controller.listInvoiceBillTos);
-router.post('/store-invoice/bill-tos', payrollSettingsGuard, controller.upsertInvoiceBillTo);
+router.post('/store-invoice/bill-tos', [...payrollSettingsGuard, requirePayrollElevation], controller.upsertInvoiceBillTo);
 router.get('/store-invoice/preview', payrollSettingsGuard, controller.previewStoreInvoice);
-router.post('/store-invoice/generate', payrollSettingsGuard, controller.generateStoreInvoice);
+router.post('/store-invoice/generate', [...payrollSettingsGuard, requirePayrollElevation], controller.generateStoreInvoice);
 router.get('/preview', payrollViewerGuard, controller.preview);
-router.put('/route-adjustments/:routeId', payrollSettingsGuard, controller.upsertRouteAdjustment);
+router.put('/route-adjustments/:routeId', [...payrollSettingsGuard, requirePayrollElevation], controller.upsertRouteAdjustment);
 router.get('/audit-log', payrollSettingsGuard, controller.auditLog);
 router.get('/reports/export', payrollViewerGuard, controller.exportReport);
 
 router.get('/pending-summary', payrollViewerGuard, controller.pendingSummary);
 router.get('/bills', payrollViewerGuard, controller.list);
 router.get('/bills/:id', payrollViewerGuard, controller.getById);
-router.post('/bills/generate', managerGuard, controller.generate);
-router.put('/bills/:id', managerGuard, controller.updateBill);
-router.patch('/bills/:id/line-items', managerGuard, controller.updateLineItems);
-router.delete('/bills/:id', managerGuard, controller.deleteBill);
-router.post('/bills/:id/send-to-team-lead', managerGuard, controller.sendToTeamLead);
+router.post('/bills/generate', [...managerGuard, requirePayrollElevation], controller.generate);
+router.put('/bills/:id', [...managerGuard, requirePayrollElevation], controller.updateBill);
+router.patch('/bills/:id/line-items', [...managerGuard, requirePayrollElevation], controller.updateLineItems);
+router.delete('/bills/:id', [...managerGuard, requirePayrollElevation], controller.deleteBill);
+router.post('/bills/:id/send-to-team-lead', [...managerGuard, requirePayrollElevation], controller.sendToTeamLead);
 router.post('/bills/:id/acknowledge', teamLeadGuard, controller.acknowledge);
 router.post('/bills/:id/team-lead/approve', teamLeadGuard, controller.teamLeadApprove);
 router.post('/bills/:id/team-lead/dispute', teamLeadGuard, controller.teamLeadDispute);
 router.post(
   '/bills/:id/mark-paid',
-  managerGuard,
+  [...managerGuard, requirePayrollElevation],
   uploadMiddleware.single('receipt'),
   controller.markPaid
 );

@@ -1,4 +1,5 @@
-import { Schema, model } from 'mongoose';
+import { Schema } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const AddressAccessCodeSchema = new Schema(
   {
@@ -10,4 +11,4 @@ const AddressAccessCodeSchema = new Schema(
   { timestamps: true }
 );
 
-export const AddressAccessCodeModel = model('AddressAccessCode', AddressAccessCodeSchema);
+export const AddressAccessCodeModel = createScopedModel('AddressAccessCode', AddressAccessCodeSchema);

@@ -9,6 +9,9 @@ import { managerGuard } from '../../../../shared/middleware/managerGuard';
 import { GetPendingUsersUseCase } from '../../application/use-cases/GetPendingUsers.use-case';
 import { GetCurrentUserUseCase } from '../../application/use-cases/getCurrentUser.use-case';
 import { UpdateProfileUseCase } from '../../application/use-cases/updateProfile.use-case';
+import { ChangePasswordUseCase } from '../../application/use-cases/changePassword.use-case';
+import { VerifyOpsElevationPinUseCase } from '../../application/use-cases/verifyOpsElevationPin.use-case';
+import { AppSettingsRepository } from '../../infrastructure/repositories/appSettings.repository';
 
 const router = Router();
 const userRepo = new UserRepository();
@@ -19,18 +22,24 @@ const loginUseCase = new LoginUseCase(userRepo);
 const getPendingUsersUseCase = new GetPendingUsersUseCase(userRepo);
 const getCurrentUserUseCase = new GetCurrentUserUseCase(userRepo, teamRepo);
 const updateProfileUseCase = new UpdateProfileUseCase(userRepo, teamRepo);
+const changePasswordUseCase = new ChangePasswordUseCase(userRepo);
+const verifyOpsElevationPinUseCase = new VerifyOpsElevationPinUseCase(new AppSettingsRepository());
 const controller = new AuthController(
   registerUseCase,
   loginUseCase,
   getPendingUsersUseCase,
   getCurrentUserUseCase,
-  updateProfileUseCase
+  updateProfileUseCase,
+  changePasswordUseCase,
+  verifyOpsElevationPinUseCase
 );
 
 router.post('/register', controller.register);
 router.post('/login', controller.login);
 router.get('/me', requireAuth({ allowPending: true }), controller.me);
 router.patch('/me', requireAuth({ allowPending: true }), controller.updateProfile);
+router.patch('/me/password', requireAuth({ allowPending: true }), controller.changePassword);
+router.post('/ops-elevation/verify', requireAuth(), controller.verifyOpsElevation);
 
 /** @deprecated Use GET /api/v1/users?pending=true */
 router.get('/pending', managerGuard, controller.getPending);

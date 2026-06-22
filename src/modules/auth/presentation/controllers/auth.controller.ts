@@ -4,6 +4,8 @@ import { LoginUseCase } from '../../application/use-cases/login.use-case';
 import { GetPendingUsersUseCase } from '../../application/use-cases/GetPendingUsers.use-case';
 import { GetCurrentUserUseCase } from '../../application/use-cases/getCurrentUser.use-case';
 import { UpdateProfileUseCase } from '../../application/use-cases/updateProfile.use-case';
+import { ChangePasswordUseCase } from '../../application/use-cases/changePassword.use-case';
+import { VerifyOpsElevationPinUseCase } from '../../application/use-cases/verifyOpsElevationPin.use-case';
 import { AppError } from '../../../../shared/errors/app-error';
 import { ENV } from '../../../../config/env';
 
@@ -13,7 +15,9 @@ export class AuthController {
     private loginUseCase: LoginUseCase,
     private getPendingUsersUseCase: GetPendingUsersUseCase,
     private getCurrentUserUseCase: GetCurrentUserUseCase,
-    private updateProfileUseCase: UpdateProfileUseCase
+    private updateProfileUseCase: UpdateProfileUseCase,
+    private changePasswordUseCase: ChangePasswordUseCase,
+    private verifyOpsElevationPinUseCase: VerifyOpsElevationPinUseCase
   ) {}
 
   register = async (req: Request, res: Response, next: NextFunction) => {
@@ -85,10 +89,45 @@ export class AuthController {
     }
   };
 
+  changePassword = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return next(new AppError('Unauthorized', 401));
+      const { currentPassword, newPassword } = req.body as {
+        currentPassword?: string;
+        newPassword?: string;
+      };
+      const result = await this.changePasswordUseCase.execute(req.user.id, {
+        currentPassword: currentPassword ?? '',
+        newPassword: newPassword ?? '',
+      });
+      res.status(200).json({ success: true, message: result.message });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   getPending = async (_req: Request, res: Response, next: NextFunction) => {
     try {
       const pendingUsers = await this.getPendingUsersUseCase.execute();
       res.status(200).json({ success: true, data: pendingUsers });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  verifyOpsElevation = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user) return next(new AppError('Unauthorized', 401));
+      const { scope, pin } = req.body as { scope?: string; pin?: string };
+      const result = await this.verifyOpsElevationPinUseCase.execute(req.user.id, {
+        scope: scope as 'dispatch' | 'payroll',
+        pin: pin ?? '',
+      });
+      res.status(200).json({
+        success: true,
+        message: 'Elevation verified.',
+        data: result,
+      });
     } catch (error) {
       next(error);
     }

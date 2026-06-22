@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const TeamLeadScheduleAlertSchema = new Schema(
   {
@@ -25,7 +26,7 @@ const TeamLeadScheduleAlertSchema = new Schema(
 TeamLeadScheduleAlertSchema.index({ scheduleId: 1, teamId: 1 }, { unique: true });
 TeamLeadScheduleAlertSchema.index({ teamLeadId: 1, seenAt: 1, scheduleDate: 1 });
 
-export const TeamLeadScheduleAlertModel = model(
+export const TeamLeadScheduleAlertModel = createScopedModel(
   'TeamLeadScheduleAlert',
   TeamLeadScheduleAlertSchema
 );

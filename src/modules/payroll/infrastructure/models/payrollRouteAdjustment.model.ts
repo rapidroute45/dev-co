@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const PayrollRouteAdjustmentSchema = new Schema(
   {
@@ -14,7 +15,7 @@ const PayrollRouteAdjustmentSchema = new Schema(
   { timestamps: true }
 );
 
-export const PayrollRouteAdjustmentModel = model(
+export const PayrollRouteAdjustmentModel = createScopedModel(
   'PayrollRouteAdjustment',
   PayrollRouteAdjustmentSchema
 );

@@ -4,7 +4,7 @@ import { IStoreRepository } from '../../../stores/domain/interfaces/store-reposi
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
 import { UserRole } from '../../../../shared/constants/roles';
-import { mergeCityListFilter, normalizeCity } from '../../../../shared/services/cityScope.service';
+import { mergeCityListFilter, normalizeCity, resolveGlobalLocationQuery } from '../../../../shared/services/cityScope.service';
 import {
   DispatchTeamAttributionService,
   shouldAttachDispatchTeamAttribution,
@@ -34,13 +34,14 @@ export class ListSchedulesUseCase {
       throw new AppError('date query parameter is required (YYYY-MM-DD).', 400);
     }
 
-    const cityFilter = mergeCityListFilter(actor, query.city);
+    const scopedQuery = resolveGlobalLocationQuery(actor, query);
+    const cityFilter = mergeCityListFilter(actor, scopedQuery.city);
 
     const filters: ScheduleListFilters = {
       date,
       city: cityFilter.city,
       cities: cityFilter.cities,
-      state: query.state?.trim() || undefined,
+      state: scopedQuery.state?.trim() || undefined,
       storeId: query.storeId?.trim() || undefined,
       page: query.page ? Number(query.page) : 1,
       limit: query.limit ? Number(query.limit) : 20,

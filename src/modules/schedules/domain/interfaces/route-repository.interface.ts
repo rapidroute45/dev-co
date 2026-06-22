@@ -34,6 +34,7 @@ export interface RouteUpdateData {
   teamVerifiedBy?: string | null;
   managerVerifiedAt?: Date | null;
   managerVerifiedBy?: string | null;
+  driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
 }
 
 export interface RouteListFilters {
@@ -60,6 +61,9 @@ export interface IRouteRepository {
   ): Promise<number>;
   countByTeamAndScheduleDate(teamId: string, scheduleDate: Date, status?: RouteStatus): Promise<number>;
   findBusyDriverIdsOnDate(scheduleDate: Date): Promise<string[]>;
+  findTeamAndDriverIdsByScheduleIds(
+    scheduleIds: string[]
+  ): Promise<{ teamIds: string[]; driverIds: string[] }>;
   findManyByDriverId(
     driverId: string,
     filters?: { fromDate?: Date; toDate?: Date; status?: RouteStatus | RouteStatus[] }

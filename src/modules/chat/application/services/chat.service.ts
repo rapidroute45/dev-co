@@ -2,6 +2,7 @@ import { Types } from 'mongoose';
 import { AppError } from '../../../../shared/errors/app-error';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
+import { User } from '../../../auth/domain/entities/user.entity';
 import { IRouteRepository } from '../../../schedules/domain/interfaces/route-repository.interface';
 import { IScheduleRepository } from '../../../schedules/domain/interfaces/schedule-repository.interface';
 import { ConversationModel } from '../../infrastructure/models/conversation.model';
@@ -19,6 +20,13 @@ const OPS_CHAT_ROLES = [
   UserRole.DISPATCH_TEAM,
 ];
 const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER];
+const GROUP_CREATOR_ROLES = [
+  UserRole.ADMIN,
+  UserRole.DISPATCH_MANAGER,
+  UserRole.DISPATCH_TEAM,
+  UserRole.TEAM_LEAD,
+  UserRole.TEAM_DRIVER,
+];
 
 function isOps(role: UserRole | null | undefined) {
   return role != null && OPS_CHAT_ROLES.includes(role);
@@ -26,6 +34,18 @@ function isOps(role: UserRole | null | undefined) {
 
 function isDriver(role: UserRole | null | undefined) {
   return role != null && DRIVER_ROLES.includes(role);
+}
+
+type UserSummary = {
+  id: string;
+  email: string;
+  fullName?: string | null;
+  role?: UserRole | null;
+  phone?: string | null;
+};
+
+function displayNameOf(u?: UserSummary | null) {
+  return u?.fullName?.trim() || u?.email || 'User';
 }
 
 export class ChatService {
@@ -36,13 +56,39 @@ export class ChatService {
   ) {}
 
   private async getUserMap(ids: string[]) {
-    const unique = [...new Set(ids.map(String))];
+    const unique = [...new Set(ids.map(String))].filter(Boolean);
     const users = await Promise.all(unique.map((id) => this.userRepo.findById(id)));
-    const map = new Map<string, { email: string; fullName?: string | null; role?: UserRole | null }>();
+    const map = new Map<string, UserSummary>();
     users.forEach((u, i) => {
-      if (u) map.set(unique[i], { email: u.email, fullName: u.fullName, role: u.role });
+      if (u) {
+        map.set(unique[i], {
+          id: unique[i],
+          email: u.email,
+          fullName: u.fullName,
+          role: u.role,
+          phone: u.phone ?? null,
+        });
+      }
     });
     return map;
+  }
+
+  /** Effective membership for a conversation (groups use participants; 1:1 falls back to the pair). */
+  private participantsOf(conv: {
+    managerId?: Types.ObjectId | null;
+    driverId?: Types.ObjectId | null;
+    participants?: Types.ObjectId[] | null;
+    kind?: string;
+  }): string[] {
+    if (conv.kind === 'group') {
+      return (conv.participants ?? []).map(String);
+    }
+    const ids = (conv.participants ?? []).map(String);
+    if (ids.length) return ids;
+    const pair: string[] = [];
+    if (conv.managerId) pair.push(String(conv.managerId));
+    if (conv.driverId) pair.push(String(conv.driverId));
+    return pair;
   }
 
   private conversationFilter(userId: string, role: UserRole | null): Record<string, unknown> {
@@ -51,16 +97,20 @@ export class ChatService {
         $or: [
           { managerId: userId },
           { driverId: userId, kind: 'internal' as const },
+          { kind: 'group' as const, participants: userId },
         ],
       };
     }
     if (isDriver(role)) {
       return {
-        driverId: userId,
-        $or: [{ kind: 'driver' as const }, { kind: { $exists: false } }],
+        $or: [
+          { driverId: userId, $or: [{ kind: 'driver' as const }, { kind: { $exists: false } }] },
+          { kind: 'group' as const, participants: userId },
+        ],
       };
     }
-    return { _id: null };
+    // Team lead and others: only group conversations they belong to.
+    return { kind: 'group' as const, participants: userId };
   }
 
   async listConversationIdsForUser(userId: string, role: UserRole | null) {
@@ -76,9 +126,14 @@ export class ChatService {
   ) {
     const conv = await ConversationModel.findById(conversationId).lean();
     if (!conv) return false;
+    const uid = String(userId);
+
+    if (conv.kind === 'group') {
+      return this.participantsOf(conv).includes(uid);
+    }
+
     const mid = String(conv.managerId);
     const did = String(conv.driverId);
-    const uid = String(userId);
     if (conv.kind === 'internal') {
       return isOps(role) && (mid === uid || did === uid);
     }
@@ -98,7 +153,11 @@ export class ChatService {
         managerId: opsUserId,
         driverId,
         kind: 'driver',
+        participants: [opsUserId, driverId],
       });
+    } else if (!conv.participants || conv.participants.length === 0) {
+      conv.participants = [new Types.ObjectId(opsUserId), new Types.ObjectId(driverId)];
+      await conv.save();
     }
     return conv;
   }
@@ -115,34 +174,71 @@ export class ChatService {
         managerId: pair[0],
         driverId: pair[1],
         kind: 'internal',
+        participants: pair,
       });
+    } else if (!conv.participants || conv.participants.length === 0) {
+      conv.participants = pair.map((id) => new Types.ObjectId(id));
+      await conv.save();
     }
     return conv;
   }
 
   async listConversations(userId: string, role: UserRole | null) {
     const filter = this.conversationFilter(userId, role);
-    if ('_id' in filter && filter._id === null) {
-      throw new AppError('Chat not available for this role.', 403);
-    }
 
     const rows = await ConversationModel.find(filter)
       .sort({ lastMessageAt: -1 })
       .lean();
 
-    const otherIds = rows.map((c) => {
-      const mid = String(c.managerId);
-      const did = String(c.driverId);
-      const uid = String(userId);
-      if (c.kind === 'internal') return mid === uid ? did : mid;
-      return isOps(role) ? did : mid;
-    });
-    const userMap = await this.getUserMap(otherIds);
+    // Collect every id we need to resolve (1:1 "other" + group members).
+    const idsToResolve = new Set<string>();
+    for (const c of rows) {
+      if (c.kind === 'group') {
+        for (const p of this.participantsOf(c)) idsToResolve.add(p);
+      } else {
+        const mid = String(c.managerId);
+        const did = String(c.driverId);
+        idsToResolve.add(mid === String(userId) ? did : mid);
+      }
+    }
+    const userMap = await this.getUserMap([...idsToResolve]);
+    const uid = String(userId);
 
     return rows.map((c) => {
+      if (c.kind === 'group') {
+        const memberIds = this.participantsOf(c);
+        const members = memberIds.map((id) => {
+          const u = userMap.get(id);
+          return {
+            id,
+            name: displayNameOf(u),
+            email: u?.email ?? '',
+            role: u?.role ?? null,
+            phone: u?.phone ?? null,
+          };
+        });
+        return {
+          id: String(c._id),
+          kind: 'group' as const,
+          isGroup: true,
+          title: c.title ?? 'Group',
+          otherUserId: null,
+          otherName: c.title ?? 'Group',
+          otherEmail: '',
+          otherRole: null,
+          otherPhone: null,
+          createdBy: c.createdBy ? String(c.createdBy) : null,
+          admins: (c.admins ?? []).map(String),
+          members,
+          memberCount: members.length,
+          lastMessageAt: c.lastMessageAt,
+          lastMessagePreview: c.lastMessagePreview ?? '',
+          lastSenderId: c.lastSenderId ? String(c.lastSenderId) : null,
+        };
+      }
+
       const mid = String(c.managerId);
       const did = String(c.driverId);
-      const uid = String(userId);
       const otherId =
         c.kind === 'internal' ? (mid === uid ? did : mid) : isOps(role) ? did : mid;
       const other = userMap.get(otherId);
@@ -151,10 +247,15 @@ export class ChatService {
         managerId: mid,
         driverId: did,
         kind: c.kind ?? 'driver',
+        isGroup: false,
+        title: null,
         otherUserId: otherId,
-        otherName: other?.fullName?.trim() || other?.email || 'User',
+        otherName: displayNameOf(other),
         otherEmail: other?.email ?? '',
         otherRole: other?.role ?? null,
+        otherPhone: other?.phone ?? null,
+        members: [],
+        memberCount: 2,
         lastMessageAt: c.lastMessageAt,
         lastMessagePreview: c.lastMessagePreview ?? '',
         lastSenderId: c.lastSenderId ? String(c.lastSenderId) : null,
@@ -162,7 +263,7 @@ export class ChatService {
     });
   }
 
-  async listDriversForOps(actorRole: UserRole | null, assignedCity?: string | null) {
+  async listDriversForOps(actorRole: UserRole | null, _assignedCity?: string | null) {
     if (!isOps(actorRole)) throw new AppError('Ops roles only.', 403);
     const drivers = await this.userRepo.findActiveDrivers();
     return drivers.map((d) => ({
@@ -170,6 +271,7 @@ export class ChatService {
       email: d.email,
       fullName: d.fullName ?? null,
       role: d.role,
+      phone: d.phone ?? null,
     }));
   }
 
@@ -188,6 +290,7 @@ export class ChatService {
           email: m.email,
           fullName: m.fullName ?? null,
           role: m.role,
+          phone: m.phone ?? null,
         }));
     }
 
@@ -207,7 +310,244 @@ export class ChatService {
       fullName: u.fullName ?? null,
       role: u.role,
       assignedCity: u.assignedCity ?? null,
+      phone: u.phone ?? null,
     }));
+  }
+
+  /** Users a given creator is allowed to add to a group (excludes the creator). */
+  private async getAddableUsers(creator: User): Promise<User[]> {
+    const creatorId = creator.id!;
+    const role = creator.role;
+
+    if (role === UserRole.ADMIN || role === UserRole.DISPATCH_MANAGER) {
+      const all = await this.userRepo.findMany({ status: UserStatus.ACTIVE });
+      return all.filter((u) => u.id && u.id !== creatorId);
+    }
+
+    if (role === UserRole.DISPATCH_TEAM) {
+      const all = await this.userRepo.findMany({ status: UserStatus.ACTIVE });
+      // Anyone except other dispatch-team members.
+      return all.filter(
+        (u) => u.id && u.id !== creatorId && u.role !== UserRole.DISPATCH_TEAM
+      );
+    }
+
+    if (role === UserRole.TEAM_LEAD || role === UserRole.TEAM_DRIVER) {
+      if (!creator.teamId) return [];
+      const members = await this.userRepo.findManyByTeamId(creator.teamId);
+      return members.filter(
+        (u) => u.id && u.id !== creatorId && u.status === UserStatus.ACTIVE
+      );
+    }
+
+    return [];
+  }
+
+  async listGroupCandidates(creatorId: string, role: UserRole | null) {
+    if (!role || !GROUP_CREATOR_ROLES.includes(role)) {
+      throw new AppError('You cannot create groups.', 403);
+    }
+    const creator = await this.userRepo.findById(creatorId);
+    if (!creator) throw new AppError('User not found.', 404);
+
+    const users = await this.getAddableUsers(creator);
+    return users.map((u) => ({
+      id: u.id!,
+      email: u.email,
+      fullName: u.fullName ?? null,
+      role: u.role,
+      teamId: u.teamId ?? null,
+      phone: u.phone ?? null,
+    }));
+  }
+
+  async createGroup(params: {
+    creatorId: string;
+    creatorRole: UserRole | null;
+    title: string;
+    memberIds: string[];
+  }) {
+    if (!params.creatorRole || !GROUP_CREATOR_ROLES.includes(params.creatorRole)) {
+      throw new AppError('You cannot create groups.', 403);
+    }
+    const title = params.title?.trim();
+    if (!title) throw new AppError('Group name is required.', 400);
+
+    const creator = await this.userRepo.findById(params.creatorId);
+    if (!creator) throw new AppError('User not found.', 404);
+
+    const addable = await this.getAddableUsers(creator);
+    const addableIds = new Set(addable.map((u) => u.id!));
+    const requested = [...new Set((params.memberIds ?? []).map(String))].filter(
+      (id) => id && id !== params.creatorId
+    );
+
+    const invalid = requested.filter((id) => !addableIds.has(id));
+    if (invalid.length) {
+      throw new AppError('You are not allowed to add one or more selected members.', 403);
+    }
+    if (requested.length === 0) {
+      throw new AppError('Add at least one member.', 400);
+    }
+
+    const participants = [params.creatorId, ...requested];
+    const conv = await ConversationModel.create({
+      kind: 'group',
+      title,
+      createdBy: params.creatorId,
+      admins: [params.creatorId],
+      participants,
+      lastMessageAt: new Date(),
+      lastMessagePreview: `${displayNameOf({
+        id: creator.id!,
+        email: creator.email,
+        fullName: creator.fullName,
+      })} created "${title}"`,
+      lastSenderId: params.creatorId,
+    });
+
+    await MessageModel.create({
+      conversationId: conv._id,
+      senderId: params.creatorId,
+      body: `${displayNameOf({
+        id: creator.id!,
+        email: creator.email,
+        fullName: creator.fullName,
+      })} created the group "${title}"`,
+      type: 'system',
+      deliveredTo: [params.creatorId],
+      readBy: [params.creatorId],
+    });
+
+    const list = await this.listConversations(params.creatorId, params.creatorRole);
+    return list.find((c) => c.id === String(conv._id)) ?? null;
+  }
+
+  async updateGroup(params: {
+    conversationId: string;
+    actorId: string;
+    actorRole: UserRole | null;
+    title?: string;
+    addMemberIds?: string[];
+    removeMemberIds?: string[];
+  }) {
+    const conv = await ConversationModel.findById(params.conversationId);
+    if (!conv || conv.kind !== 'group') throw new AppError('Group not found.', 404);
+
+    const admins = (conv.admins ?? []).map(String);
+    if (!admins.includes(String(params.actorId))) {
+      throw new AppError('Only group admins can edit the group.', 403);
+    }
+
+    const actor = await this.userRepo.findById(params.actorId);
+    if (!actor) throw new AppError('User not found.', 404);
+
+    const systemMessages: string[] = [];
+
+    if (params.title !== undefined) {
+      const title = params.title.trim();
+      if (!title) throw new AppError('Group name cannot be empty.', 400);
+      if (title !== conv.title) {
+        conv.title = title;
+        systemMessages.push(`${displayNameOf(actor as unknown as UserSummary)} renamed the group to "${title}"`);
+      }
+    }
+
+    if (params.addMemberIds?.length) {
+      const addable = await this.getAddableUsers(actor);
+      const addableIds = new Set(addable.map((u) => u.id!));
+      const current = new Set(this.participantsOf(conv));
+      const toAdd = [...new Set(params.addMemberIds.map(String))].filter(
+        (id) => !current.has(id)
+      );
+      const invalid = toAdd.filter((id) => !addableIds.has(id));
+      if (invalid.length) {
+        throw new AppError('You are not allowed to add one or more selected members.', 403);
+      }
+      for (const id of toAdd) conv.participants.push(new Types.ObjectId(id));
+      if (toAdd.length) {
+        const addedMap = await this.getUserMap(toAdd);
+        const names = toAdd.map((id) => displayNameOf(addedMap.get(id))).join(', ');
+        systemMessages.push(`${displayNameOf(actor as unknown as UserSummary)} added ${names}`);
+      }
+    }
+
+    if (params.removeMemberIds?.length) {
+      const removeSet = new Set(params.removeMemberIds.map(String));
+      // Cannot remove the creator.
+      removeSet.delete(String(conv.createdBy));
+      const removedMap = await this.getUserMap([...removeSet]);
+      conv.participants = conv.participants.filter(
+        (p) => !removeSet.has(String(p))
+      );
+      conv.admins = (conv.admins ?? []).filter((a) => !removeSet.has(String(a)));
+      const names = [...removeSet].map((id) => displayNameOf(removedMap.get(id))).join(', ');
+      if (names) systemMessages.push(`${displayNameOf(actor as unknown as UserSummary)} removed ${names}`);
+    }
+
+    if (systemMessages.length) {
+      conv.lastMessageAt = new Date();
+      conv.lastMessagePreview = systemMessages[systemMessages.length - 1];
+      conv.lastSenderId = new Types.ObjectId(params.actorId);
+    }
+    await conv.save();
+
+    for (const text of systemMessages) {
+      await MessageModel.create({
+        conversationId: conv._id,
+        senderId: params.actorId,
+        body: text,
+        type: 'system',
+        deliveredTo: [params.actorId],
+        readBy: [params.actorId],
+      });
+    }
+
+    const list = await this.listConversations(params.actorId, params.actorRole);
+    return list.find((c) => c.id === String(conv._id)) ?? null;
+  }
+
+  async leaveGroup(params: {
+    conversationId: string;
+    actorId: string;
+  }) {
+    const conv = await ConversationModel.findById(params.conversationId);
+    if (!conv || conv.kind !== 'group') throw new AppError('Group not found.', 404);
+
+    const actor = await this.userRepo.findById(params.actorId);
+    conv.participants = conv.participants.filter(
+      (p) => String(p) !== String(params.actorId)
+    );
+    conv.admins = (conv.admins ?? []).filter(
+      (a) => String(a) !== String(params.actorId)
+    );
+
+    if (conv.participants.length === 0) {
+      await MessageModel.deleteMany({ conversationId: conv._id });
+      await conv.deleteOne();
+      return { left: true, deleted: true };
+    }
+
+    // Keep at least one admin.
+    if ((conv.admins ?? []).length === 0 && conv.participants.length) {
+      conv.admins = [conv.participants[0]];
+    }
+
+    conv.lastMessageAt = new Date();
+    conv.lastMessagePreview = `${displayNameOf(actor as unknown as UserSummary)} left the group`;
+    conv.lastSenderId = new Types.ObjectId(params.actorId);
+    await conv.save();
+
+    await MessageModel.create({
+      conversationId: conv._id,
+      senderId: params.actorId,
+      body: `${displayNameOf(actor as unknown as UserSummary)} left the group`,
+      type: 'system',
+      deliveredTo: [params.actorId],
+      readBy: [params.actorId],
+    });
+
+    return { left: true, deleted: false };
   }
 
   async openConversationForDriver(driverId: string) {
@@ -271,15 +611,20 @@ export class ChatService {
       emitMessagesDelivered({ conversationId, userId: String(userId) });
     }
 
+    const senderMap = await this.getUserMap(rows.map((m) => String(m.senderId)));
+
     return rows.reverse().map((m) => {
       const readBy = (m.readBy ?? []).map(String);
       const deliveredTo = (m.deliveredTo ?? []).map(String);
       if (!readBy.includes(String(userId))) readBy.push(String(userId));
       if (!deliveredTo.includes(String(userId))) deliveredTo.push(String(userId));
+      const sender = senderMap.get(String(m.senderId));
       return {
         id: String(m._id),
         conversationId: String(m.conversationId),
         senderId: String(m.senderId),
+        senderName: displayNameOf(sender),
+        senderRole: sender?.role ?? null,
         body: m.body,
         type: m.type,
         meta: m.meta ?? {},
@@ -296,7 +641,6 @@ export class ChatService {
     conversationId?: string
   ) {
     const base = this.conversationFilter(userId, role);
-    if ('_id' in base && base._id === null) return [];
 
     const filter = conversationId ? { ...base, _id: conversationId } : base;
     const convs = await ConversationModel.find(filter).select('_id').lean();
@@ -323,17 +667,50 @@ export class ChatService {
     return affected;
   }
 
-  private recipientIdForSender(
-    conv: { managerId: Types.ObjectId; driverId: Types.ObjectId; kind?: string },
-    senderId: string,
-    senderRole: UserRole | null
-  ) {
-    const mid = String(conv.managerId);
-    const did = String(conv.driverId);
-    if (conv.kind === 'internal') {
-      return senderId === mid ? did : mid;
-    }
-    return isOps(senderRole) ? did : mid;
+  private async buildOutgoingMessage(params: {
+    conv: InstanceType<typeof ConversationModel>;
+    senderId: string;
+    body: string;
+    type: 'text' | 'voice' | 'document';
+    meta?: Record<string, unknown>;
+    preview: string;
+  }) {
+    const { conv } = params;
+    const msg = await MessageModel.create({
+      conversationId: conv._id,
+      senderId: params.senderId,
+      body: params.body,
+      type: params.type,
+      meta: params.meta ?? {},
+      deliveredTo: [params.senderId],
+      readBy: [params.senderId],
+    });
+
+    conv.lastMessageAt = new Date();
+    conv.lastMessagePreview = params.preview.slice(0, 120);
+    conv.lastSenderId = new Types.ObjectId(params.senderId);
+    await conv.save();
+
+    const sender = await this.userRepo.findById(params.senderId);
+    const participantIds = this.participantsOf(conv).filter(
+      (id) => id !== String(params.senderId)
+    );
+
+    return {
+      id: String(msg._id),
+      conversationId: String(conv._id),
+      senderId: params.senderId,
+      senderName: displayNameOf(sender as unknown as UserSummary),
+      senderRole: sender?.role ?? null,
+      body: msg.body,
+      type: msg.type,
+      meta: params.meta ?? {},
+      deliveredTo: [params.senderId],
+      readBy: [params.senderId],
+      createdAt: msg.createdAt?.toISOString?.() ?? msg.createdAt,
+      recipientId: participantIds[0] ?? '',
+      participantIds,
+    };
   }
 
   async sendMessage(params: {
@@ -354,34 +731,13 @@ export class ChatService {
     );
     if (!allowed) throw new AppError('Access denied.', 403);
 
-    const msg = await MessageModel.create({
-      conversationId: conv._id,
+    return this.buildOutgoingMessage({
+      conv,
       senderId: params.senderId,
       body: params.body,
       type: 'text',
-      deliveredTo: [params.senderId],
-      readBy: [params.senderId],
+      preview: params.body,
     });
-
-    conv.lastMessageAt = new Date();
-    conv.lastMessagePreview = params.body.slice(0, 120);
-    conv.lastSenderId = new Types.ObjectId(params.senderId);
-    await conv.save();
-
-    const recipientId = this.recipientIdForSender(conv, params.senderId, params.senderRole);
-
-    return {
-      id: String(msg._id),
-      conversationId: String(conv._id),
-      senderId: params.senderId,
-      body: msg.body,
-      type: msg.type,
-      meta: {},
-      deliveredTo: [params.senderId],
-      readBy: [params.senderId],
-      createdAt: msg.createdAt?.toISOString?.() ?? msg.createdAt,
-      recipientId,
-    };
   }
 
   async sendVoiceMessage(params: {
@@ -403,36 +759,50 @@ export class ChatService {
     );
     if (!allowed) throw new AppError('Access denied.', 403);
 
-    const meta = { audioUrl: params.audioUrl, durationMs: params.durationMs };
-    const msg = await MessageModel.create({
-      conversationId: conv._id,
+    return this.buildOutgoingMessage({
+      conv,
       senderId: params.senderId,
       body: 'Voice message',
       type: 'voice',
-      meta,
-      deliveredTo: [params.senderId],
-      readBy: [params.senderId],
+      meta: { audioUrl: params.audioUrl, durationMs: params.durationMs },
+      preview: '🎤 Voice message',
     });
+  }
 
-    conv.lastMessageAt = new Date();
-    conv.lastMessagePreview = '🎤 Voice message';
-    conv.lastSenderId = new Types.ObjectId(params.senderId);
-    await conv.save();
+  async sendDocumentMessage(params: {
+    conversationId: string;
+    senderId: string;
+    senderRole: UserRole | null;
+    fileUrl: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+  }) {
+    if (!params.fileUrl) throw new AppError('File is required.', 400);
 
-    const recipientId = this.recipientIdForSender(conv, params.senderId, params.senderRole);
+    const conv = await ConversationModel.findById(params.conversationId);
+    if (!conv) throw new AppError('Conversation not found.', 404);
 
-    return {
-      id: String(msg._id),
-      conversationId: String(conv._id),
+    const allowed = await this.userInConversation(
+      params.senderId,
+      params.senderRole,
+      params.conversationId
+    );
+    if (!allowed) throw new AppError('Access denied.', 403);
+
+    return this.buildOutgoingMessage({
+      conv,
       senderId: params.senderId,
-      body: msg.body,
-      type: msg.type,
-      meta,
-      deliveredTo: [params.senderId],
-      readBy: [params.senderId],
-      createdAt: msg.createdAt?.toISOString?.() ?? msg.createdAt,
-      recipientId,
-    };
+      body: params.fileName || 'Document',
+      type: 'document',
+      meta: {
+        fileUrl: params.fileUrl,
+        fileName: params.fileName,
+        fileSize: params.fileSize,
+        mimeType: params.mimeType,
+      },
+      preview: `📄 ${params.fileName || 'Document'}`,
+    });
   }
 
   async notifyDeliveryPhoto(params: {

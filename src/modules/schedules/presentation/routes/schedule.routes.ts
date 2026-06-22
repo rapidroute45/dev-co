@@ -25,6 +25,7 @@ import { AcknowledgeTeamLeadScheduleAlertUseCase } from '../../application/use-c
 import { TeamLeadScheduleAlertRepository } from '../../infrastructure/repositories/teamLeadScheduleAlert.repository';
 import { TeamLeadScheduleAlertService } from '../../application/services/teamLeadScheduleAlert.service';
 import { teamLeadGuard } from '../../../../shared/middleware/teamLeadGuard';
+import { requireDispatchElevation } from '../../../../shared/middleware/opsElevation.middleware';
 import { ScheduleController } from '../controllers/schedule.controller';
 
 const router = Router();
@@ -88,7 +89,7 @@ const controller = new ScheduleController(
   new AcknowledgeTeamLeadScheduleAlertUseCase(teamLeadAlertService)
 );
 
-router.post('/', dispatchOpsGuard, controller.create);
+router.post('/', [...dispatchOpsGuard, requireDispatchElevation], controller.create);
 router.get('/team-lead/alerts', teamLeadGuard, controller.listTeamLeadAlerts);
 router.post(
   '/team-lead/alerts/:scheduleId/dismiss',
@@ -97,7 +98,7 @@ router.post(
 );
 router.get('/', scheduleViewerGuard, controller.list);
 router.get('/:id', scheduleViewerGuard, controller.getById);
-router.put('/:id', dispatchOpsGuard, controller.update);
-router.delete('/:id', managerGuard, controller.delete);
+router.put('/:id', [...dispatchOpsGuard, requireDispatchElevation], controller.update);
+router.delete('/:id', [...managerGuard, requireDispatchElevation], controller.delete);
 
 export default router;

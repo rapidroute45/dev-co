@@ -9,6 +9,7 @@ import { mapStoreToResponse } from '../../../stores/application/mappers/storeRes
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
 import { UserRole } from '../../../../shared/constants/roles';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
+import { DriverRoutePathService } from '../services/driverRoutePath.service';
 import { enforceActorCity } from '../../../../shared/services/cityScope.service';
 import { scheduleGeocodeContext } from '../utils/geocodeContext';
 
@@ -19,7 +20,8 @@ export class GetRouteUseCase {
     private storeRepo: IStoreRepository,
     private userRepo: IUserRepository,
     private teamRepo: ITeamRepository,
-    private routeStopEnrichment: RouteStopEnrichmentService
+    private routeStopEnrichment: RouteStopEnrichmentService,
+    private driverRoutePathService: DriverRoutePathService
   ) {}
 
   async execute(
@@ -35,44 +37,48 @@ export class GetRouteUseCase {
     const route = await this.routeRepo.findById(routeId);
     if (!route) throw new AppError('Route not found.', 404);
 
+    await this.driverRoutePathService.ensureSavedIfCompleted(route);
+    const routeForResponse = (await this.routeRepo.findById(routeId)) ?? route;
+
     if (actor?.role === UserRole.DRIVER || actor?.role === UserRole.TEAM_DRIVER) {
-      if (route.driverId !== actor.id) {
+      if (routeForResponse.driverId !== actor.id) {
         throw new AppError('Access denied.', 403);
       }
     }
 
     if (actor?.role === UserRole.TEAM_LEAD) {
-      if (!actor.teamId || route.teamId !== actor.teamId) {
+      if (!actor.teamId || routeForResponse.teamId !== actor.teamId) {
         throw new AppError('Access denied.', 403);
       }
     }
 
-    const schedule = await this.scheduleRepo.findById(route.scheduleId);
+    const schedule = await this.scheduleRepo.findById(routeForResponse.scheduleId);
     if (schedule && actor?.role !== UserRole.TEAM_LEAD) {
       enforceActorCity(actor, schedule.city);
     }
-    const team = await this.teamRepo.findById(route.teamId);
-    const driver = route.driverId
-      ? await this.userRepo.findById(route.driverId)
+    const team = await this.teamRepo.findById(routeForResponse.teamId);
+    const driver = routeForResponse.driverId
+      ? await this.userRepo.findById(routeForResponse.driverId)
       : null;
     const store = schedule ? await this.storeRepo.findById(schedule.storeId) : null;
 
     const enriched = await this.routeStopEnrichment.enrichRoute(
-      route,
+      routeForResponse,
       {
         teamName: team?.name,
         teamCode: team?.code,
         driverEmail: driver?.email,
         driverName: driver ? resolveDisplayName(driver.fullName, driver.email) : null,
         driverLocation:
-          route.driverLat != null && route.driverLng != null
+          routeForResponse.driverLat != null && routeForResponse.driverLng != null
             ? {
-                lat: route.driverLat,
-                lng: route.driverLng,
-                updatedAt: route.driverLocationAt,
-                sharingInBackground: route.driverLocationBackgroundSharing,
+                lat: routeForResponse.driverLat,
+                lng: routeForResponse.driverLng,
+                updatedAt: routeForResponse.driverLocationAt,
+                sharingInBackground: routeForResponse.driverLocationBackgroundSharing,
               }
             : null,
+        driverRoutePath: routeForResponse.driverRoutePath,
       },
       schedule
         ? {

@@ -1,4 +1,5 @@
-import { Schema, model } from 'mongoose';
+import { Schema } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { StoreActiveStatus } from '../../../../shared/constants/storeStatuses';
 
 const StoreSchema = new Schema(
@@ -20,4 +21,4 @@ const StoreSchema = new Schema(
 StoreSchema.index({ city: 1, state: 1 });
 StoreSchema.index({ storeName: 'text', city: 1 });
 
-export const StoreModel = model('Store', StoreSchema);
+export const StoreModel = createScopedModel('Store', StoreSchema);

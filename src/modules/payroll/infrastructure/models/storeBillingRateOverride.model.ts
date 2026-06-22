@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const StoreBillingRateOverrideSchema = new Schema(
   {
@@ -19,7 +20,7 @@ const StoreBillingRateOverrideSchema = new Schema(
   { timestamps: true }
 );
 
-export const StoreBillingRateOverrideModel = model(
+export const StoreBillingRateOverrideModel = createScopedModel(
   'StoreBillingRateOverride',
   StoreBillingRateOverrideSchema
 );

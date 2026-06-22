@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { RouteDwellStatus } from '../../../../shared/constants/routeDwellStatuses';
 import {
   DWELL_RADIUS_METERS,
@@ -33,4 +34,4 @@ const RouteDwellSessionSchema = new Schema(
 RouteDwellSessionSchema.index({ routeId: 1, status: 1 });
 RouteDwellSessionSchema.index({ teamLeadId: 1, status: 1, lastSeenAt: -1 });
 
-export const RouteDwellSessionModel = model('RouteDwellSession', RouteDwellSessionSchema);
+export const RouteDwellSessionModel = createScopedModel('RouteDwellSession', RouteDwellSessionSchema);

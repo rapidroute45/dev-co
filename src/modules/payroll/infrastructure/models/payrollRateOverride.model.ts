@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const PayrollRateOverrideSchema = new Schema(
   {
@@ -17,4 +18,4 @@ const PayrollRateOverrideSchema = new Schema(
   { timestamps: true }
 );
 
-export const PayrollRateOverrideModel = model('PayrollRateOverride', PayrollRateOverrideSchema);
+export const PayrollRateOverrideModel = createScopedModel('PayrollRateOverride', PayrollRateOverrideSchema);

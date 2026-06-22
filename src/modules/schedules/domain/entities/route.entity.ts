@@ -39,6 +39,7 @@ export interface RouteProps {
   teamVerifiedBy?: string | null;
   managerVerifiedAt?: Date | null;
   managerVerifiedBy?: string | null;
+  driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -156,6 +157,9 @@ export class Route {
   }
   get managerVerifiedBy() {
     return this.props.managerVerifiedBy ?? null;
+  }
+  get driverRoutePath() {
+    return this.props.driverRoutePath ?? [];
   }
   get createdAt() {
     return this.props.createdAt;

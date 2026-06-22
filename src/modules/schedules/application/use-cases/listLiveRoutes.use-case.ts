@@ -9,7 +9,7 @@ import { ITeamRepository } from '../../../teams/domain/interfaces/team-repositor
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 import { mapStopsToResponse } from '../utils/routeStops';
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
-import { mergeCityListFilter, enforceActorCity } from '../../../../shared/services/cityScope.service';
+import { mergeCityListFilter, enforceActorCity, resolveGlobalLocationQuery } from '../../../../shared/services/cityScope.service';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { RouteDwellSessionRepository } from '../../infrastructure/repositories/routeDwellSession.repository';
 import { DWELL_THRESHOLD_MINUTES } from '../../../../shared/constants/dwellDetection';
@@ -49,9 +49,10 @@ export class ListLiveRoutesUseCase {
       throw new AppError('date query parameter is required (YYYY-MM-DD).', 400);
     }
 
-    const cityFilter = mergeCityListFilter(actor, query.city);
-    const state = query.state?.trim();
-    const storeId = query.storeId?.trim();
+    const scopedQuery = resolveGlobalLocationQuery(actor, query);
+    const cityFilter = mergeCityListFilter(actor, scopedQuery.city);
+    const state = scopedQuery.state?.trim();
+    const storeId = scopedQuery.storeId?.trim();
 
     let scheduleIds: string[] | undefined;
     if (cityFilter.city || cityFilter.cities?.length || state || storeId) {

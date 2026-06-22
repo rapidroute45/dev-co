@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const StoreBillingSettingsSchema = new Schema(
   {
@@ -12,7 +13,7 @@ const StoreBillingSettingsSchema = new Schema(
   { timestamps: true }
 );
 
-export const StoreBillingSettingsModel = model(
+export const StoreBillingSettingsModel = createScopedModel(
   'StoreBillingSettings',
   StoreBillingSettingsSchema
 );

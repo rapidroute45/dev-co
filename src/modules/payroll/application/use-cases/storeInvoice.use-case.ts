@@ -8,7 +8,21 @@ import { InvoiceBillToRepository } from '../../infrastructure/repositories/invoi
 import { buildStoreInvoiceData } from '../services/buildStoreInvoice.service';
 import { parsePayrollPeriodInput } from '../utils/unbilledPayrollRoutes';
 import { formatScheduleDate } from '../../../schedules/application/utils/scheduleDate';
-import { CityActor, mergeCityFilter } from '../../../../shared/services/cityScope.service';
+import { CityActor, enforceActorCity, mergeCityFilter } from '../../../../shared/services/cityScope.service';
+import type { Store } from '../../../stores/domain/entities/store.entity';
+
+function parseStoreIds(input: {
+  storeId?: string;
+  storeIds?: string | string[];
+}): string[] | null {
+  if (input.storeIds !== undefined && input.storeIds !== null) {
+    const raw = Array.isArray(input.storeIds) ? input.storeIds : String(input.storeIds).split(',');
+    const ids = raw.map((id) => String(id).trim()).filter(Boolean);
+    return ids.length > 0 ? ids : null;
+  }
+  const single = input.storeId?.trim();
+  return single ? [single] : null;
+}
 
 export class ListInvoiceBillTosUseCase {
   constructor(private readonly repo = new InvoiceBillToRepository()) {}
@@ -53,9 +67,13 @@ export class BuildStoreInvoiceUseCase {
       search?: string;
       city?: string;
       state?: string;
+      storeId?: string;
+      storeIds?: string | string[];
       billToName?: string;
       billToAddress?: string;
       weeklyPerformanceIncentiveRate?: number;
+      ruralAmount?: number;
+      overtimeAmount?: number;
       saveBillTo?: boolean;
       updatedBy?: string;
     },
@@ -77,16 +95,28 @@ export class BuildStoreInvoiceUseCase {
       });
     }
 
-    const [defaults, { items: stores }] = await Promise.all([
-      this.billingSettingsRepo.getOrCreate(),
-      this.storeRepo.findMany({
+    const defaults = await this.billingSettingsRepo.getOrCreate();
+
+    let stores: Store[];
+    const requestedStoreIds = parseStoreIds(input);
+    if (requestedStoreIds) {
+      stores = [];
+      for (const id of requestedStoreIds) {
+        const store = await this.storeRepo.findById(id);
+        if (!store) throw new AppError(`Store not found: ${id}`, 404);
+        enforceActorCity(actor, store.city);
+        stores.push(store);
+      }
+    } else {
+      const { items } = await this.storeRepo.findMany({
         search: input.search,
         city,
         state: input.state?.trim() || undefined,
         limit: 500,
         page: 1,
-      }),
-    ]);
+      });
+      stores = items;
+    }
 
     const storeIds = stores.map((s) => s.id!).filter(Boolean);
     const overrides = await this.billingOverrideRepo.findByStoreIds(storeIds);
@@ -113,12 +143,24 @@ export class BuildStoreInvoiceUseCase {
         ? Number(input.weeklyPerformanceIncentiveRate)
         : defaults.weeklyPerformanceIncentive;
 
+    const ruralAmount =
+      input.ruralAmount !== undefined && Number.isFinite(Number(input.ruralAmount))
+        ? Math.max(0, Number(input.ruralAmount))
+        : 0;
+
+    const overtimeAmount =
+      input.overtimeAmount !== undefined && Number.isFinite(Number(input.overtimeAmount))
+        ? Math.max(0, Number(input.overtimeAmount))
+        : 0;
+
     const invoice = buildStoreInvoiceData({
       periodStart: formatScheduleDate(period.periodStart),
       periodEnd: formatScheduleDate(period.periodEnd),
       billToName,
       billToAddress,
       weeklyPerformanceIncentiveRate: incentiveRate,
+      ruralAmount,
+      overtimeAmount,
       stores: stores
         .filter((s) => s.id)
         .map((s) => ({ id: s.id!, storeName: s.storeName })),
@@ -132,7 +174,6 @@ export class BuildStoreInvoiceUseCase {
       ...invoice,
       defaults: {
         weeklyPerformanceIncentive: defaults.weeklyPerformanceIncentive,
-        overtimeHourlyRate: defaults.overtimeHourlyRate,
       },
     };
   }

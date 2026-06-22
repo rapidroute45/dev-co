@@ -4,9 +4,12 @@
   "description": "",
   "main": "index.js",
   "scripts": {
-    "dev": "ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev": "APP_ENV=development ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev:test": "APP_ENV=test ts-node-dev --respawn --transpile-only src/server.ts",
+    "dev:prod": "APP_ENV=production ts-node-dev --respawn --transpile-only src/server.ts",
     "build": "rimraf dist && tsc",
-    "start": "node dist/server.js"
+    "start": "APP_ENV=production node dist/server.js",
+    "start:test": "APP_ENV=test node dist/server.js"
   },
   "keywords": [],
   "author": "",

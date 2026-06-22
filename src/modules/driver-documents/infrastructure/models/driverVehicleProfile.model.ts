@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const driverVehicleProfileSchema = new mongoose.Schema(
   {
@@ -15,7 +16,7 @@ const driverVehicleProfileSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export const DriverVehicleProfileModel = mongoose.model(
+export const DriverVehicleProfileModel = createScopedModel(
   'DriverVehicleProfile',
   driverVehicleProfileSchema
 );

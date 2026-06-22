@@ -10,6 +10,7 @@ import {
   CityActor,
   getActorAssignedCities,
   mergeCityListFilter,
+  resolveGlobalLocationQuery,
 } from '../../../../shared/services/cityScope.service';
 
 const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER, UserRole.TEAM_LEAD];
@@ -34,14 +35,17 @@ export class ManagerDashboardService {
   async getStats(query: Record<string, string>, actor?: CityActor) {
     const scheduleDate = this.resolveDate(query);
     const date = formatScheduleDate(scheduleDate);
-    const cityFilter = mergeCityListFilter(actor, query.city);
+    const scopedQuery = resolveGlobalLocationQuery(actor, query);
+    const cityFilter = mergeCityListFilter(actor, scopedQuery.city);
+    const stateFilter = scopedQuery.state?.trim() || undefined;
     const scopedCities = getActorAssignedCities(actor);
 
-    if (cityFilter.city || cityFilter.cities?.length) {
+    if (cityFilter.city || cityFilter.cities?.length || stateFilter) {
       const { items: schedules } = await this.scheduleRepo.findMany({
         date,
         city: cityFilter.city,
         cities: cityFilter.cities,
+        state: stateFilter,
         page: 1,
         limit: 500,
       });
@@ -57,6 +61,7 @@ export class ManagerDashboardService {
         date,
         city: cityFilter.city ?? scopedCities[0] ?? null,
         cities: cityFilter.cities ?? (scopedCities.length > 1 ? scopedCities : undefined),
+        state: stateFilter ?? null,
         todayRoutes,
         availableDrivers,
         completedRoutes,

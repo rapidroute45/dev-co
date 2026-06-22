@@ -11,7 +11,7 @@ import {
 import { RouteCategory } from '../../../../shared/constants/routeCategories';
 import { formatScheduleDate } from '../../../schedules/application/utils/scheduleDate';
 import { parsePayrollPeriodInput } from '../utils/unbilledPayrollRoutes';
-import { CityActor, mergeCityFilter } from '../../../../shared/services/cityScope.service';
+import { CityActor, mergeCityListFilter, resolveGlobalLocationQuery } from '../../../../shared/services/cityScope.service';
 
 export class GetStorePayrollSummaryUseCase {
   constructor(
@@ -31,14 +31,19 @@ export class GetStorePayrollSummaryUseCase {
         ? parsePayrollPeriodInput(input.periodStart, input.periodEnd)
         : null;
 
-    const city = mergeCityFilter(actor, input?.city);
+    const scopedInput = resolveGlobalLocationQuery(actor, {
+      ...(input?.city ? { city: input.city } : {}),
+      ...(input?.state ? { state: input.state } : {}),
+    });
+    const cityFilter = mergeCityListFilter(actor, scopedInput.city);
 
     const [settings, { items: stores }] = await Promise.all([
       this.billingSettingsRepo.getOrCreate(),
       this.storeRepo.findMany({
         search: input?.search,
-        city,
-        state: input?.state?.trim() || undefined,
+        city: cityFilter.city,
+        cities: cityFilter.cities,
+        state: scopedInput.state?.trim() || undefined,
         limit: 500,
         page: 1,
       }),

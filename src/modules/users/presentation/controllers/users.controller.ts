@@ -32,7 +32,10 @@ export class UsersController {
 
   list = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await this.listUsersUseCase.execute(req.query as Record<string, string>);
+      const data = await this.listUsersUseCase.execute(
+        req.query as Record<string, string>,
+        req.user
+      );
       res.status(200).json({ success: true, data, count: data.length });
     } catch (error) {
       next(error);
