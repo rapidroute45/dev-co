@@ -585,9 +585,13 @@ export class PayrollController {
         search,
         city,
         state,
+        storeId,
+        storeIds,
         billToName,
         billToAddress,
         weeklyPerformanceIncentiveRate,
+        ruralAmount,
+        overtimeAmount,
       } = req.query as Record<string, string | undefined>;
       const data = await this.buildStoreInvoiceUseCase.execute(
         {
@@ -596,12 +600,16 @@ export class PayrollController {
           search,
           city,
           state,
+          storeId,
+          storeIds,
           billToName,
           billToAddress,
           weeklyPerformanceIncentiveRate:
             weeklyPerformanceIncentiveRate !== undefined
               ? Number(weeklyPerformanceIncentiveRate)
               : undefined,
+          ruralAmount: ruralAmount !== undefined ? Number(ruralAmount) : undefined,
+          overtimeAmount: overtimeAmount !== undefined ? Number(overtimeAmount) : undefined,
           saveBillTo: false,
         },
         req.user
@@ -621,10 +629,14 @@ export class PayrollController {
         search,
         city,
         state,
+        storeId,
+        storeIds,
         billToName,
         billToAddress,
         weeklyPerformanceIncentiveRate,
-      } = req.body as Record<string, string | number | undefined>;
+        ruralAmount,
+        overtimeAmount,
+      } = req.body as Record<string, string | number | string[] | undefined>;
       const data = await this.buildStoreInvoiceUseCase.execute(
         {
           periodStart: String(periodStart ?? ''),
@@ -632,12 +644,20 @@ export class PayrollController {
           search: search ? String(search) : undefined,
           city: city ? String(city) : undefined,
           state: state ? String(state) : undefined,
+          storeId: storeId ? String(storeId) : undefined,
+          storeIds: Array.isArray(storeIds)
+            ? storeIds.map(String)
+            : storeIds
+              ? String(storeIds)
+              : undefined,
           billToName: billToName ? String(billToName) : undefined,
           billToAddress: billToAddress ? String(billToAddress) : undefined,
           weeklyPerformanceIncentiveRate:
             weeklyPerformanceIncentiveRate !== undefined
               ? Number(weeklyPerformanceIncentiveRate)
               : undefined,
+          ruralAmount: ruralAmount !== undefined ? Number(ruralAmount) : undefined,
+          overtimeAmount: overtimeAmount !== undefined ? Number(overtimeAmount) : undefined,
           saveBillTo: true,
           updatedBy: req.user.id,
         },

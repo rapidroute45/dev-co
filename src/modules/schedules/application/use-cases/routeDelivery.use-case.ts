@@ -128,7 +128,8 @@ export class RouteDeliveryUseCase {
     driverId: string,
     lat: number,
     lng: number,
-    backgroundSharing = false
+    backgroundSharing = false,
+    clientRecordedAt?: string | Date | null
   ) {
     const route = await this.assertDriverRoute(routeId, driverId);
     if (route.status !== RouteStatus.IN_PROGRESS) {
@@ -139,8 +140,8 @@ export class RouteDeliveryUseCase {
       throw new AppError('Invalid coordinates.', 400);
     }
 
-    await this.driverLocationRepo.savePoint({ routeId, driverId, lat, lng });
-    const recordedAt = new Date();
+    const recordedAt = parseClientRecordedAt(clientRecordedAt);
+    await this.driverLocationRepo.savePoint({ routeId, driverId, lat, lng, recordedAt });
     await this.routeRepo.update(routeId, {
       driverLat: lat,
       driverLng: lng,
@@ -226,6 +227,62 @@ export class RouteDeliveryUseCase {
       routeCompleted: Boolean(completedRoute),
       backgroundSharing: Boolean(backgroundSharing),
     };
+  }
+
+  /**
+   * Batched location ingest for the native background-geolocation HTTP layer.
+   * The SDK persists fixes in SQLite and replays them (oldest-first) as an array, so we
+   * process each point in order and return the result of the most recent one for the
+   * client UI (proximity / route-completed). Points are processed best-effort: a single
+   * bad point never rejects the whole batch.
+   */
+  async reportLocationBatch(
+    routeId: string,
+    driverId: string,
+    points: Array<{ lat: number; lng: number; recordedAt?: string }>,
+    backgroundSharing = false
+  ) {
+    if (!Array.isArray(points) || points.length === 0) {
+      throw new AppError('No location points provided.', 400);
+    }
+
+    const ordered = [...points].sort((a, b) => {
+      const at = a.recordedAt ? Date.parse(a.recordedAt) : 0;
+      const bt = b.recordedAt ? Date.parse(b.recordedAt) : 0;
+      return at - bt;
+    });
+
+    let lastResult: Awaited<ReturnType<RouteDeliveryUseCase['reportLocation']>> | null =
+      null;
+    let accepted = 0;
+
+    for (const point of ordered) {
+      const lat = Number(point.lat);
+      const lng = Number(point.lng);
+      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+
+      try {
+        lastResult = await this.reportLocation(
+          routeId,
+          driverId,
+          lat,
+          lng,
+          Boolean(backgroundSharing),
+          point.recordedAt
+        );
+        accepted += 1;
+        if (lastResult.routeCompleted) break;
+      } catch (error) {
+        // Stale point (e.g. route already finished) — skip and keep the batch flowing.
+        if (error instanceof AppError && error.statusCode >= 500) throw error;
+      }
+    }
+
+    if (!lastResult) {
+      throw new AppError('No valid location points in batch.', 400);
+    }
+
+    return { ...lastResult, accepted, received: points.length };
   }
 
   private async notifyAutoCompletedStops(params: {
@@ -382,6 +439,158 @@ export class RouteDeliveryUseCase {
     return this.stopActionResult(updated, completedRoute);
   }
 
+  private async assertDispatchStopUpdate(routeId: string, actor?: CityActor) {
+    const route = await this.routeRepo.findById(routeId);
+    if (!route) throw new AppError('Route not found.', 404);
+    const schedule = await this.scheduleRepo.findById(route.scheduleId);
+    if (schedule) enforceActorCity(actor, schedule.city);
+    if (!route.driverId) {
+      throw new AppError('Assign a driver before updating stop status.', 400);
+    }
+    return route;
+  }
+
+  async completeStopAsDispatch(routeId: string, stopId: string, actor?: CityActor) {
+    return this.updateStopStatusAsDispatch(
+      routeId,
+      stopId,
+      RouteStopStatus.COMPLETED,
+      actor
+    );
+  }
+
+  async returnStopAsDispatch(
+    routeId: string,
+    stopId: string,
+    reason: string,
+    customReason: string | undefined,
+    actor?: CityActor
+  ) {
+    return this.updateStopStatusAsDispatch(
+      routeId,
+      stopId,
+      RouteStopStatus.RETURNED,
+      actor,
+      reason,
+      customReason
+    );
+  }
+
+  async updateStopStatusAsDispatch(
+    routeId: string,
+    stopId: string,
+    status: RouteStopStatus,
+    actor?: CityActor,
+    reason?: string,
+    customReason?: string
+  ) {
+    const route = await this.assertDispatchStopUpdate(routeId, actor);
+    const allowedRouteStatuses = new Set<RouteStatus>([
+      RouteStatus.ACTIVE,
+      RouteStatus.IN_PROGRESS,
+      RouteStatus.COMPLETED,
+      RouteStatus.NOT_VERIFIED,
+    ]);
+    if (!allowedRouteStatuses.has(route.status as RouteStatus)) {
+      throw new AppError('Stop status cannot be changed on this route.', 400);
+    }
+
+    const stop = await this.routeStopRepo.findById(stopId);
+    if (!stop || stop.routeId !== routeId) {
+      throw new AppError('Stop not found.', 404);
+    }
+    if (stop.type === 'pickup') {
+      throw new AppError('Pickup stop cannot be updated.', 400);
+    }
+
+    if (status === RouteStopStatus.RETURNED) {
+      const preset = reason?.trim() ?? '';
+      if (!RETURN_REASON_PRESETS.includes(preset as (typeof RETURN_REASON_PRESETS)[number])) {
+        throw new AppError('Invalid return reason.', 400);
+      }
+      if (preset === 'custom' && !customReason?.trim()) {
+        throw new AppError('Custom reason is required.', 400);
+      }
+    }
+
+    let patch: Parameters<IRouteStopRepository['updateById']>[1];
+    if (status === RouteStopStatus.PENDING) {
+      patch = {
+        status: RouteStopStatus.PENDING,
+        completedAt: null,
+        returnReason: null,
+        returnReasonCustom: null,
+        deliveryPhotoUrl: null,
+        proximityEnteredAt: null,
+        proximityAnchorLat: null,
+        proximityAnchorLng: null,
+      };
+    } else if (status === RouteStopStatus.COMPLETED) {
+      patch = {
+        status: RouteStopStatus.COMPLETED,
+        completedAt: new Date(),
+        returnReason: null,
+        returnReasonCustom: null,
+        deliveryPhotoUrl: null,
+        proximityEnteredAt: null,
+        proximityAnchorLat: null,
+        proximityAnchorLng: null,
+      };
+    } else {
+      const preset = reason!.trim();
+      patch = {
+        status: RouteStopStatus.RETURNED,
+        completedAt: new Date(),
+        returnReason: preset,
+        returnReasonCustom: preset === 'custom' ? customReason?.trim() || null : null,
+        deliveryPhotoUrl: null,
+      };
+    }
+
+    const updated = await this.routeStopRepo.updateById(stopId, patch);
+    if (!updated) throw new AppError('Failed to update stop.', 500);
+
+    const driverId = route.driverId!;
+    const allStops = await this.routeStopRepo.findByRouteId(routeId);
+    const dropoffs = allStops.filter((s) => s.type === 'dropoff');
+    const pendingCount = dropoffs.filter((s) => s.status === RouteStopStatus.PENDING).length;
+
+    let effectiveStatus = route.status as RouteStatus;
+    if (
+      pendingCount > 0 &&
+      (effectiveStatus === RouteStatus.COMPLETED || effectiveStatus === RouteStatus.NOT_VERIFIED)
+    ) {
+      await this.routeRepo.update(routeId, {
+        status: RouteStatus.IN_PROGRESS,
+        deliveryVerification: DeliveryVerification.PENDING,
+      });
+      effectiveStatus = RouteStatus.IN_PROGRESS;
+    }
+
+    if (status === RouteStopStatus.COMPLETED) {
+      await this.routeRepo.update(routeId, {
+        deliveryVerification: DeliveryVerification.PENDING,
+      });
+    }
+
+    emitRouteUpdated({
+      routeId,
+      scheduleId: route.scheduleId,
+      action: 'updated',
+      driverIds: [driverId],
+    });
+
+    let completedRoute: Awaited<ReturnType<RouteDeliveryUseCase['tryAutoCompleteRoute']>> = null;
+    if (
+      pendingCount === 0 &&
+      (effectiveStatus === RouteStatus.IN_PROGRESS || effectiveStatus === RouteStatus.ACTIVE)
+    ) {
+      completedRoute = await this.tryAutoCompleteRoute(routeId, driverId);
+    }
+
+    return this.stopActionResult(updated, completedRoute);
+  }
+
   async setStopAccessCode(
     routeId: string,
     stopId: string,
@@ -470,7 +679,11 @@ export class RouteDeliveryUseCase {
 
     const stops = await this.routeStopRepo.findByRouteId(routeId);
     const mapped = mapStopsToResponse(stops);
-    const path = await this.driverLocationRepo.listByRoute(routeId);
+    const savedPath =
+      route.driverRoutePath && route.driverRoutePath.length >= 2
+        ? route.driverRoutePath
+        : null;
+    const path = savedPath ?? (await this.driverLocationRepo.listByRoute(routeId));
 
     const enriched = await this.routeStopEnrichment.enrichRoute(route);
 
@@ -498,4 +711,17 @@ export class RouteDeliveryUseCase {
       })),
     };
   }
+}
+
+function parseClientRecordedAt(value?: string | Date | null): Date {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return value;
+  }
+  if (typeof value === 'string' && value.trim()) {
+    const parsed = Date.parse(value);
+    if (Number.isFinite(parsed)) {
+      return new Date(parsed);
+    }
+  }
+  return new Date();
 }

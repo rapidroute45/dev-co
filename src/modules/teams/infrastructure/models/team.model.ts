@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const TeamSchema = new Schema(
   {
@@ -12,4 +13,4 @@ const TeamSchema = new Schema(
   { timestamps: true }
 );
 
-export const TeamModel = model('Team', TeamSchema);
+export const TeamModel = createScopedModel('Team', TeamSchema);

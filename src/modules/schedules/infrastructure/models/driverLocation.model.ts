@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const DriverLocationSchema = new Schema(
   {
@@ -13,4 +14,4 @@ const DriverLocationSchema = new Schema(
 
 DriverLocationSchema.index({ routeId: 1, recordedAt: -1 });
 
-export const DriverLocationModel = model('DriverLocation', DriverLocationSchema);
+export const DriverLocationModel = createScopedModel('DriverLocation', DriverLocationSchema);

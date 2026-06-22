@@ -11,7 +11,9 @@ const startServer = async () => {
   initChatSocket(httpServer, chatService);
 
   httpServer.listen(ENV.PORT, () => {
-    console.log(`🚀 Dispatch System running on http://localhost:${ENV.PORT}`);
+    console.log(
+      `🚀 Dispatch System (${ENV.APP_ENV}) running on http://localhost:${ENV.PORT}`
+    );
   });
 };
 

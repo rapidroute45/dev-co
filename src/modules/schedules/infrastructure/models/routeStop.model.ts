@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { RouteStopStatus } from '../../../../shared/constants/routeStopStatuses';
 
 export const ROUTE_STOP_TYPES = ['pickup', 'dropoff'] as const;
@@ -40,4 +41,4 @@ const RouteStopSchema = new Schema(
 
 RouteStopSchema.index({ routeId: 1, sequence: 1 }, { unique: true });
 
-export const RouteStopModel = model('RouteStop', RouteStopSchema);
+export const RouteStopModel = createScopedModel('RouteStop', RouteStopSchema);

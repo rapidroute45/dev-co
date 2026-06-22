@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { DocumentSubmissionStatus } from '../../../../shared/constants/documentStatuses';
 
 const driverDocumentSubmissionSchema = new mongoose.Schema(
@@ -36,7 +37,7 @@ driverDocumentSubmissionSchema.index(
   { unique: true }
 );
 
-export const DriverDocumentSubmissionModel = mongoose.model(
+export const DriverDocumentSubmissionModel = createScopedModel(
   'DriverDocumentSubmission',
   driverDocumentSubmissionSchema
 );

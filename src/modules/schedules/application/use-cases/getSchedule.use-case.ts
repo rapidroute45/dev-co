@@ -67,7 +67,13 @@ export class GetScheduleUseCase {
 
     routes = await Promise.all(
       routes.map(async (route) => {
-        if (!route.id || route.status !== RouteStatus.IN_PROGRESS) return route;
+        if (!route.id) return route;
+        if (
+          route.status !== RouteStatus.IN_PROGRESS &&
+          route.status !== RouteStatus.ACTIVE
+        ) {
+          return route;
+        }
         const completed = await this.routeAutoComplete.maybeComplete(route.id);
         return completed ?? route;
       })

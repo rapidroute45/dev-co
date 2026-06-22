@@ -10,6 +10,13 @@ const OPS_CHAT_ROLES = [
   UserRole.DISPATCH_TEAM,
 ];
 const DRIVER_ROLES = [UserRole.DRIVER, UserRole.TEAM_DRIVER];
+const GROUP_CREATOR_ROLES = [
+  UserRole.ADMIN,
+  UserRole.DISPATCH_MANAGER,
+  UserRole.DISPATCH_TEAM,
+  UserRole.TEAM_LEAD,
+  UserRole.TEAM_DRIVER,
+];
 
 export class ChatController {
   constructor(
@@ -151,6 +158,96 @@ export class ChatController {
       });
       this.emitMessage?.(data);
       res.status(201).json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  sendDocumentMessage = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      if (!req.file) return next(new AppError('File is required.', 400));
+
+      const data = await this.chatService.sendDocumentMessage({
+        conversationId: String(req.params.id),
+        senderId: req.user.id,
+        senderRole: req.user.role,
+        fileUrl: publicUploadPath(req.file.filename),
+        fileName: req.file.originalname,
+        fileSize: req.file.size,
+        mimeType: req.file.mimetype,
+      });
+      this.emitMessage?.(data);
+      res.status(201).json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  listGroupCandidates = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      if (!req.user.role || !GROUP_CREATOR_ROLES.includes(req.user.role)) {
+        return next(new AppError('You cannot create groups.', 403));
+      }
+      const data = await this.chatService.listGroupCandidates(req.user.id, req.user.role);
+      res.status(200).json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  createGroup = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      if (!req.user.role || !GROUP_CREATOR_ROLES.includes(req.user.role)) {
+        return next(new AppError('You cannot create groups.', 403));
+      }
+      const { title, memberIds } = req.body as { title?: string; memberIds?: string[] };
+      const data = await this.chatService.createGroup({
+        creatorId: req.user.id,
+        creatorRole: req.user.role,
+        title: String(title ?? ''),
+        memberIds: Array.isArray(memberIds) ? memberIds.map(String) : [],
+      });
+      res.status(201).json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  updateGroup = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const { title, addMemberIds, removeMemberIds } = req.body as {
+        title?: string;
+        addMemberIds?: string[];
+        removeMemberIds?: string[];
+      };
+      const data = await this.chatService.updateGroup({
+        conversationId: String(req.params.id),
+        actorId: req.user.id,
+        actorRole: req.user.role,
+        title,
+        addMemberIds: Array.isArray(addMemberIds) ? addMemberIds.map(String) : undefined,
+        removeMemberIds: Array.isArray(removeMemberIds)
+          ? removeMemberIds.map(String)
+          : undefined,
+      });
+      res.status(200).json({ success: true, data });
+    } catch (e) {
+      next(e);
+    }
+  };
+
+  leaveGroup = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const data = await this.chatService.leaveGroup({
+        conversationId: String(req.params.id),
+        actorId: req.user.id,
+      });
+      res.status(200).json({ success: true, data });
     } catch (e) {
       next(e);
     }

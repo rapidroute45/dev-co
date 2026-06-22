@@ -6,6 +6,7 @@ import { AppError } from '../../../../shared/errors/app-error';
 import { ENV } from '../../../../config/env';
 import { UserRole } from '../../../../shared/constants/roles';
 import { resolveUserAssignedCities } from '../../../users/application/mappers/userResponse.mapper';
+import { assertUserCanLogin } from '../services/accountAccess.service';
 
 export class LoginUseCase {
   constructor(private userRepo: IUserRepository) {}
@@ -20,6 +21,8 @@ export class LoginUseCase {
     if (!isPasswordValid) {
       throw new AppError('Invalid email or password credentials', 401);
     }
+
+    assertUserCanLogin(user);
 
     // Generate token payload utilizing internal Domain values
     const assignedCities = resolveUserAssignedCities(user);

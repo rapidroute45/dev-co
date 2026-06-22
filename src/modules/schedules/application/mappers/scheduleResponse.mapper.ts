@@ -66,6 +66,7 @@ export function mapRouteToResponse(
     };
     driverLocation?: { lat: number; lng: number; updatedAt?: Date | null; sharingInBackground?: boolean } | null;
     totalMiles?: number | null;
+    driverRoutePath?: { lat: number; lng: number; recordedAt?: Date | string | null }[];
   }
 ) {
   return {
@@ -89,6 +90,11 @@ export function mapRouteToResponse(
     progress: extras?.progress ?? null,
     driverLocation: extras?.driverLocation ?? null,
     totalMiles: extras?.totalMiles ?? route.totalMiles ?? null,
+    driverRoutePath: (extras?.driverRoutePath ?? route.driverRoutePath ?? []).map((point) => ({
+      lat: point.lat,
+      lng: point.lng,
+      recordedAt: point.recordedAt ?? null,
+    })),
     arrivalTime: route.arrivalTime,
     departureTime: route.departureTime,
     arrivalMinutes: route.arrivalMinutes,

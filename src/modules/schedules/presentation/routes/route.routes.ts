@@ -5,6 +5,7 @@ import { scheduleViewerGuard } from '../../../../shared/middleware/scheduleViewe
 import { trackingViewerGuard } from '../../../../shared/middleware/trackingViewerGuard';
 import { driverGuard } from '../../../../shared/middleware/driverGuard';
 import { teamLeadGuard } from '../../../../shared/middleware/teamLeadGuard';
+import { requireDispatchElevation } from '../../../../shared/middleware/opsElevation.middleware';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { TeamRepository } from '../../../teams/infrastructure/repositories/team.repository';
 import { StoreRepository } from '../../../stores/infrastructure/repositories/store.repository';
@@ -21,6 +22,7 @@ import { RouteValidationService } from '../../application/services/routeValidati
 import { ScheduleActivationService } from '../../application/services/scheduleActivation.service';
 import { DwellDetectionService } from '../../application/services/dwellDetection.service';
 import { RouteAutoCompleteService } from '../../application/services/routeAutoComplete.service';
+import { DriverRoutePathService } from '../../application/services/driverRoutePath.service';
 import { StopProximityService } from '../../application/services/stopProximity.service';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 import { CreateRouteUseCase } from '../../application/use-cases/createRoute.use-case';
@@ -47,6 +49,7 @@ const routeStopRepo = new RouteStopRepository();
 const routeStopEnrichment = new RouteStopEnrichmentService(routeStopRepo);
 const addressCodeRepo = new AddressAccessCodeRepository();
 const driverLocationRepo = new DriverLocationRepository();
+const driverRoutePathService = new DriverRoutePathService(routeRepo, driverLocationRepo);
 const routeDwellSessionRepo = new RouteDwellSessionRepository();
 const storeRepo = new StoreRepository();
 const userRepo = new UserRepository();
@@ -123,7 +126,15 @@ const controller = new RouteController(
     addressCodeRepo,
     teamLeadAlertService
   ),
-  new GetRouteUseCase(routeRepo, scheduleRepo, storeRepo, userRepo, teamRepo, routeStopEnrichment),
+  new GetRouteUseCase(
+    routeRepo,
+    scheduleRepo,
+    storeRepo,
+    userRepo,
+    teamRepo,
+    routeStopEnrichment,
+    driverRoutePathService
+  ),
   new UpdateRouteUseCase(
     routeRepo,
     routeStopRepo,
@@ -193,20 +204,24 @@ router.get('/offers/pending', driverGuard, controller.listPendingOffers);
 router.get('/me', driverGuard, controller.listMyRoutes);
 router.get('/me/completed', driverGuard, controller.listMyCompletedRoutes);
 router.get('/', scheduleViewerGuard, controller.list);
-router.post('/', dispatchOpsGuard, controller.create);
+router.post('/', [...dispatchOpsGuard, requireDispatchElevation], controller.create);
 router.get('/live', trackingViewerGuard, controller.listLive);
 router.get('/:id/tracking', trackingViewerGuard, controller.getTracking);
 router.get('/:id', scheduleViewerGuard, controller.getById);
-router.put('/:id', dispatchOpsGuard, controller.update);
+router.put('/:id', [...dispatchOpsGuard, requireDispatchElevation], controller.update);
 router.post('/:id/assign-driver', teamLeadGuard, controller.assignDriver);
 router.post('/:id/accept', driverGuard, controller.accept);
 router.post('/:id/decline', driverGuard, controller.decline);
 router.post('/:id/start', driverGuard, controller.startRoute);
 router.post('/:id/complete', driverGuard, controller.completeRoute);
 router.post('/:id/location', driverGuard, controller.reportLocation);
+router.post('/:id/location/batch', driverGuard, controller.reportLocationBatch);
 router.post('/:routeId/stops/:stopId/complete', driverGuard, controller.completeStop);
 router.post('/:routeId/stops/:stopId/return', driverGuard, controller.returnStop);
-router.put('/:routeId/stops/:stopId/access-code', dispatchOpsGuard, controller.setAccessCode);
-router.delete('/:id', dispatchOpsGuard, controller.delete);
+router.post('/:routeId/stops/:stopId/ops-complete', [...dispatchOpsGuard, requireDispatchElevation], controller.opsCompleteStop);
+router.post('/:routeId/stops/:stopId/ops-return', [...dispatchOpsGuard, requireDispatchElevation], controller.opsReturnStop);
+router.patch('/:routeId/stops/:stopId/status', [...dispatchOpsGuard, requireDispatchElevation], controller.opsUpdateStopStatus);
+router.put('/:routeId/stops/:stopId/access-code', [...dispatchOpsGuard, requireDispatchElevation], controller.setAccessCode);
+router.delete('/:id', [...dispatchOpsGuard, requireDispatchElevation], controller.delete);
 
 export default router;

@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const PayrollAuditLogSchema = new Schema(
   {
@@ -16,4 +17,4 @@ const PayrollAuditLogSchema = new Schema(
 
 PayrollAuditLogSchema.index({ createdAt: -1 });
 
-export const PayrollAuditLogModel = model('PayrollAuditLog', PayrollAuditLogSchema);
+export const PayrollAuditLogModel = createScopedModel('PayrollAuditLog', PayrollAuditLogSchema);

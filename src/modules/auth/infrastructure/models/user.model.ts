@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 
 const UserSchema = new Schema({
@@ -20,4 +21,4 @@ const UserSchema = new Schema({
   assignedCities: { type: [String], default: [], index: true },
 }, { timestamps: true });
 
-export const UserModel = model('User', UserSchema);
+export const UserModel = createScopedModel('User', UserSchema);

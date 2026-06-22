@@ -7,6 +7,7 @@ import { UserRole } from '../../../shared/constants/roles';
 import { ChatService } from '../application/services/chat.service';
 import { getActorAssignedCities, normalizeCity } from '../../../shared/services/cityScope.service';
 import { trackingCityRoom } from '../../../shared/utils/trackingCityKey';
+import { resolveDbEnvironment, withDbEnvironment } from '../../../config/dbContext';
 
 export type ChatSocketUser = AuthenticatedUser;
 
@@ -55,6 +56,10 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
     try {
       const user = jwt.verify(token, ENV.JWT_SECRET) as ChatSocketUser;
       socket.data.user = user;
+      socket.data.dbEnvironment = resolveDbEnvironment(
+        (socket.handshake.auth?.dbEnvironment as string | undefined) ??
+          (socket.handshake.headers['x-dispatch-environment'] as string | undefined)
+      );
       next();
     } catch {
       next(new Error('Unauthorized'));
@@ -63,6 +68,7 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
 
   io.on('connection', (socket: Socket) => {
     const user = socket.data.user as ChatSocketUser;
+    const dbEnvironment = socket.data.dbEnvironment as ReturnType<typeof resolveDbEnvironment>;
     void socket.join(roomForUser(user.id));
 
     if (user.role && MANAGER_ROLES.includes(user.role)) {
@@ -76,36 +82,45 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
       }
     }
 
-    void chatService.listConversationIdsForUser(user.id, user.role).then((ids) => {
+    void withDbEnvironment(dbEnvironment, () =>
+      chatService.listConversationIdsForUser(user.id, user.role)
+    ).then((ids) => {
       ids.forEach((id) => void socket.join(roomForConversation(id)));
     });
 
-    // Mark everything addressed to this user as delivered now they're online.
-    void chatService.markConversationsDelivered(user.id, user.role);
+    void withDbEnvironment(dbEnvironment, () =>
+      chatService.markConversationsDelivered(user.id, user.role)
+    );
 
     socket.on('conversation:join', async (payload: { conversationId?: string }) => {
       const conversationId = payload?.conversationId;
       if (!conversationId) return;
-      const ok = await chatService.userInConversation(user.id, user.role, conversationId);
+      const ok = await withDbEnvironment(dbEnvironment, () =>
+        chatService.userInConversation(user.id, user.role, conversationId)
+      );
       if (ok) void socket.join(roomForConversation(conversationId));
     });
 
     socket.on('message:delivered', async (payload: { conversationId?: string }) => {
-      await chatService.markConversationsDelivered(
-        user.id,
-        user.role,
-        payload?.conversationId ? String(payload.conversationId) : undefined
+      await withDbEnvironment(dbEnvironment, () =>
+        chatService.markConversationsDelivered(
+          user.id,
+          user.role,
+          payload?.conversationId ? String(payload.conversationId) : undefined
+        )
       );
     });
 
     socket.on('message:send', async (payload: { conversationId?: string; body?: string }) => {
       try {
-        const message = await chatService.sendMessage({
-          conversationId: String(payload?.conversationId ?? ''),
-          senderId: user.id,
-          senderRole: user.role,
-          body: String(payload?.body ?? '').trim(),
-        });
+        const message = await withDbEnvironment(dbEnvironment, async () =>
+          chatService.sendMessage({
+            conversationId: String(payload?.conversationId ?? ''),
+            senderId: user.id,
+            senderRole: user.role,
+            body: String(payload?.body ?? '').trim(),
+          })
+        );
         emitNewChatMessage(message);
         socket.emit('message:new', message);
       } catch (err) {
@@ -116,7 +131,9 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
     socket.on('typing:start', async (payload: { conversationId?: string }) => {
       const conversationId = payload?.conversationId;
       if (!conversationId) return;
-      const ok = await chatService.userInConversation(user.id, user.role, conversationId);
+      const ok = await withDbEnvironment(dbEnvironment, () =>
+        chatService.userInConversation(user.id, user.role, conversationId)
+      );
       if (!ok) return;
       socket.to(roomForConversation(conversationId)).emit('typing:update', {
         conversationId,
@@ -169,7 +186,8 @@ export function emitNewChatMessage(message: {
   type: string;
   meta?: Record<string, unknown>;
   createdAt: Date | string;
-  recipientId: string;
+  recipientId?: string;
+  participantIds?: string[];
   readBy?: string[];
   deliveredTo?: string[];
 }) {
@@ -179,12 +197,21 @@ export function emitNewChatMessage(message: {
     createdAt: message.createdAt,
   };
   io.to(roomForConversation(message.conversationId)).emit('message:new', payload);
-  io.to(roomForUser(message.recipientId)).emit('conversation:updated', {
-    conversationId: message.conversationId,
-  });
-  io.to(roomForUser(message.senderId)).emit('conversation:updated', {
-    conversationId: message.conversationId,
-  });
+
+  // Notify every member's personal room so their conversation list updates,
+  // even if they have not joined the conversation room yet (groups included).
+  const notifyIds = new Set<string>([message.senderId]);
+  if (message.participantIds?.length) {
+    for (const id of message.participantIds) notifyIds.add(String(id));
+  } else if (message.recipientId) {
+    notifyIds.add(String(message.recipientId));
+  }
+  for (const id of notifyIds) {
+    if (!id) continue;
+    io.to(roomForUser(id)).emit('conversation:updated', {
+      conversationId: message.conversationId,
+    });
+  }
 }
 
 export function emitDeliveryPhotoAlert(payload: {

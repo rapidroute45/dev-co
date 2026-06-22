@@ -1,3 +1,4 @@
+import { Types } from 'mongoose';
 import { Schedule } from '../../domain/entities/schedule.entity';
 import {
   IScheduleRepository,
@@ -40,7 +41,11 @@ function buildQuery(filters?: ScheduleListFilters) {
   if (filters?.date) query.date = parseScheduleDate(filters.date);
   applyCityListFilter(query, { city: filters?.city, cities: filters?.cities });
   if (filters?.state) query.state = new RegExp(filters.state.trim(), 'i');
-  if (filters?.storeId) query.storeId = filters.storeId;
+  if (filters?.storeId) {
+    query.storeId = Types.ObjectId.isValid(filters.storeId)
+      ? new Types.ObjectId(filters.storeId)
+      : filters.storeId;
+  }
   if (filters?.status) query.status = filters.status;
   if (filters?.createdBy) query.createdBy = filters.createdBy;
   if (filters?.scheduleIds) query._id = { $in: filters.scheduleIds };

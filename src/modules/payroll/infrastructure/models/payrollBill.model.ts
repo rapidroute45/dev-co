@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { PayrollStatus } from '../../domain/entities/payrollBill.entity';
 
 const ALL_STATUSES = [
@@ -79,4 +80,4 @@ const PayrollBillSchema = new Schema(
 PayrollBillSchema.index({ teamId: 1, periodStart: 1, periodEnd: 1 });
 PayrollBillSchema.index({ teamId: 1, status: 1 });
 
-export const PayrollBillModel = model('PayrollBill', PayrollBillSchema);
+export const PayrollBillModel = createScopedModel('PayrollBill', PayrollBillSchema);

@@ -45,6 +45,7 @@ function mapDoc(doc: {
   teamVerifiedBy?: { toString(): string } | null;
   managerVerifiedAt?: Date | null;
   managerVerifiedBy?: { toString(): string } | null;
+  driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
   createdAt?: Date;
   updatedAt?: Date;
 }): Route {
@@ -81,6 +82,11 @@ function mapDoc(doc: {
     teamVerifiedBy: doc.teamVerifiedBy?.toString() ?? null,
     managerVerifiedAt: doc.managerVerifiedAt ?? null,
     managerVerifiedBy: doc.managerVerifiedBy?.toString() ?? null,
+    driverRoutePath: (doc.driverRoutePath ?? []).map((point) => ({
+      lat: point.lat,
+      lng: point.lng,
+      recordedAt: point.recordedAt,
+    })),
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
@@ -161,7 +167,6 @@ export class RouteRepository implements IRouteRepository {
     return RouteModel.countDocuments(query);
   }
 
-  /** Drivers assigned to a route on this date (offer sent, active, or in progress). */
   async findBusyDriverIdsOnDate(scheduleDate: Date): Promise<string[]> {
     const ids = await RouteModel.distinct('driverId', {
       scheduleDate,
@@ -174,6 +179,26 @@ export class RouteRepository implements IRouteRepository {
     return ids
       .map((id) => (id == null ? null : String(id)))
       .filter((id): id is string => Boolean(id));
+  }
+
+  async findTeamAndDriverIdsByScheduleIds(
+    scheduleIds: string[]
+  ): Promise<{ teamIds: string[]; driverIds: string[] }> {
+    if (scheduleIds.length === 0) return { teamIds: [], driverIds: [] };
+    const [teamIds, driverIds] = await Promise.all([
+      RouteModel.distinct('teamId', {
+        scheduleId: { $in: scheduleIds },
+        teamId: { $ne: null },
+      }),
+      RouteModel.distinct('driverId', {
+        scheduleId: { $in: scheduleIds },
+        driverId: { $ne: null },
+      }),
+    ]);
+    return {
+      teamIds: teamIds.map(String).filter(Boolean),
+      driverIds: driverIds.map(String).filter(Boolean),
+    };
   }
 
   async findPendingOffersForDriver(driverId: string): Promise<Route[]> {

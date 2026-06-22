@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const InvoiceBillToSchema = new Schema(
   {
@@ -9,4 +10,4 @@ const InvoiceBillToSchema = new Schema(
   { timestamps: true }
 );
 
-export const InvoiceBillToModel = model('InvoiceBillTo', InvoiceBillToSchema);
+export const InvoiceBillToModel = createScopedModel('InvoiceBillTo', InvoiceBillToSchema);

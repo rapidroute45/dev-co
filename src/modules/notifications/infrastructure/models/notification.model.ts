@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { NotificationType } from '../../domain/entities/notification.entity';
 
 const NotificationSchema = new Schema(
@@ -16,4 +17,4 @@ const NotificationSchema = new Schema(
 
 NotificationSchema.index({ recipientId: 1, createdAt: -1 });
 
-export const NotificationModel = model('Notification', NotificationSchema);
+export const NotificationModel = createScopedModel('Notification', NotificationSchema);

@@ -1,4 +1,5 @@
 import { RouteCategory } from '../../../../shared/constants/routeCategories';
+import { routeDurationHours as computeRouteDurationHours } from '../../../schedules/application/utils/routeDuration';
 import type { Route } from '../../../schedules/domain/entities/route.entity';
 import { storeBillingRateForCategory } from './storeBillingCalculation.service';
 import {
@@ -20,9 +21,7 @@ export type StoreInvoiceStoreLine = {
     routeBase: number;
     total: number;
   }[];
-  overtimeHours: number;
-  overtimeHourlyRate: number;
-  overtimeTotal: number;
+  hoursSpent: number;
 };
 
 export type StoreInvoiceLineItem = {
@@ -30,6 +29,7 @@ export type StoreInvoiceLineItem = {
   description: string;
   pay: number;
   routeBase: number;
+  hoursSpent: number;
   total: number;
 };
 
@@ -51,9 +51,9 @@ export type StoreInvoiceData = {
   storeLines: StoreInvoiceStoreLine[];
   lineItems: StoreInvoiceLineItem[];
   totalRouteCount: number;
-  totalOvertimeHours: number;
-  overtimeHourlyRate: number;
-  overtimeTotal: number;
+  totalHoursSpent: number;
+  ruralAmount: number;
+  overtimeAmount: number;
   weeklyPerformanceIncentiveRate: number;
   weeklyPerformanceIncentiveTotal: number;
   subtotal: number;
@@ -89,6 +89,10 @@ function invoiceNumberFromPeriodEnd(periodEndIso: string): string {
   return `BRT-LV ${periodEndIso.replace(/-/g, '')}`;
 }
 
+function routeDurationHours(route: Route): number {
+  return computeRouteDurationHours(route) ?? 0;
+}
+
 type StoreMeta = { id: string; storeName: string };
 
 export function buildStoreInvoiceData(input: {
@@ -97,6 +101,8 @@ export function buildStoreInvoiceData(input: {
   billToName: string;
   billToAddress: string;
   weeklyPerformanceIncentiveRate: number;
+  ruralAmount?: number;
+  overtimeAmount?: number;
   stores: StoreMeta[];
   routes: Route[];
   scheduleStoreIdByScheduleId: Map<string, string>;
@@ -105,6 +111,8 @@ export function buildStoreInvoiceData(input: {
 }): StoreInvoiceData {
   const overrideByStoreId = mapOverridesByStoreId(input.overrides);
   const storeById = new Map(input.stores.map((s) => [s.id, s]));
+  const ruralAmount = Math.max(0, Number(input.ruralAmount ?? 0) || 0);
+  const overtimeAmount = Math.max(0, Number(input.overtimeAmount ?? 0) || 0);
 
   const ratesByStoreId = new Map<string, FullStoreBillingRates>();
   for (const store of input.stores) {
@@ -117,58 +125,68 @@ export function buildStoreInvoiceData(input: {
     );
   }
 
-  type GroupKey = string;
-  const dayStoreCategoryCounts = new Map<
-    GroupKey,
-    { date: string; storeId: string; category: RouteCategory; count: number }
-  >();
-
   const storeCategoryTotals = new Map<
     string,
     Map<RouteCategory, { count: number; routeBase: number }>
   >();
-  const storeOvertimeHours = new Map<string, number>();
-  let totalOvertimeHours = 0;
-  let overtimeTotal = 0;
+  const storeHoursSpent = new Map<string, number>();
+
+  type RouteRow = {
+    date: string;
+    storeId: string;
+    storeName: string;
+    category: RouteCategory;
+    routeBase: number;
+    hoursSpent: number;
+  };
+
+  const routeRows: RouteRow[] = [];
+  let totalHoursSpent = 0;
   let totalRouteCount = 0;
 
   for (const route of input.routes) {
     const storeId = input.scheduleStoreIdByScheduleId.get(route.scheduleId);
     if (!storeId) continue;
     const rates = ratesByStoreId.get(storeId);
-    if (!rates) continue;
+    const store = storeById.get(storeId);
+    if (!rates || !store) continue;
 
     const category = (route.routeCategory as RouteCategory) ?? RouteCategory.SMALL;
     const date = route.scheduleDate.toISOString().slice(0, 10);
-    const groupKey = `${date}|${storeId}|${category}`;
-    const existing = dayStoreCategoryCounts.get(groupKey);
-    if (existing) existing.count += 1;
-    else dayStoreCategoryCounts.set(groupKey, { date, storeId, category, count: 1 });
+    const routeBase = storeBillingRateForCategory(rates, category);
+    const hoursSpent = routeDurationHours(route);
+
+    routeRows.push({
+      date,
+      storeId,
+      storeName: store.storeName,
+      category,
+      routeBase,
+      hoursSpent,
+    });
 
     const storeCats =
       storeCategoryTotals.get(storeId) ?? new Map<RouteCategory, { count: number; routeBase: number }>();
-    const catEntry = storeCats.get(category) ?? {
-      count: 0,
-      routeBase: storeBillingRateForCategory(rates, category),
-    };
+    const catEntry = storeCats.get(category) ?? { count: 0, routeBase };
     catEntry.count += 1;
     storeCats.set(category, catEntry);
     storeCategoryTotals.set(storeId, storeCats);
 
-    const otHours = route.overtimeHours ?? 0;
-    if (otHours > 0) {
-      storeOvertimeHours.set(storeId, (storeOvertimeHours.get(storeId) ?? 0) + otHours);
-      totalOvertimeHours += otHours;
-      overtimeTotal += otHours * rates.overtimeHourlyRate;
-    }
+    storeHoursSpent.set(storeId, (storeHoursSpent.get(storeId) ?? 0) + hoursSpent);
+    totalHoursSpent += hoursSpent;
     totalRouteCount += 1;
   }
+
+  routeRows.sort((a, b) => {
+    if (a.date !== b.date) return a.date.localeCompare(b.date);
+    if (a.storeName !== b.storeName) return a.storeName.localeCompare(b.storeName);
+    return CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category);
+  });
 
   const storeLines: StoreInvoiceStoreLine[] = input.stores
     .map((store) => {
       const cats = storeCategoryTotals.get(store.id);
       if (!cats) return null;
-      const rates = ratesByStoreId.get(store.id)!;
       const categories = CATEGORY_ORDER.map((category) => {
         const entry = cats.get(category);
         if (!entry || entry.count === 0) return null;
@@ -181,27 +199,16 @@ export function buildStoreInvoiceData(input: {
         };
       }).filter(Boolean) as StoreInvoiceStoreLine['categories'];
 
-      const otHours = storeOvertimeHours.get(store.id) ?? 0;
       return {
         storeId: store.id,
         storeName: store.storeName,
         routeCount: categories.reduce((sum, c) => sum + c.count, 0),
         categories,
-        overtimeHours: otHours,
-        overtimeHourlyRate: rates.overtimeHourlyRate,
-        overtimeTotal: otHours * rates.overtimeHourlyRate,
+        hoursSpent: Math.round((storeHoursSpent.get(store.id) ?? 0) * 100) / 100,
       };
     })
     .filter((line): line is StoreInvoiceStoreLine => Boolean(line && line.routeCount > 0))
     .sort((a, b) => a.storeName.localeCompare(b.storeName));
-
-  const sortedGroups = [...dayStoreCategoryCounts.values()].sort((a, b) => {
-    if (a.date !== b.date) return a.date.localeCompare(b.date);
-    const storeA = storeById.get(a.storeId)?.storeName ?? '';
-    const storeB = storeById.get(b.storeId)?.storeName ?? '';
-    if (storeA !== storeB) return storeA.localeCompare(storeB);
-    return CATEGORY_ORDER.indexOf(a.category) - CATEGORY_ORDER.indexOf(b.category);
-  });
 
   const lineItems: StoreInvoiceLineItem[] = [];
   const leadTime = `${formatLeadDate(input.periodStart)}-${formatLeadDate(input.periodEnd)}`;
@@ -211,22 +218,31 @@ export function buildStoreInvoiceData(input: {
     description: 'DELIVERY SERVICES',
     pay: 0,
     routeBase: 0,
+    hoursSpent: 0,
     total: 0,
   });
 
   let routeBaseSubtotal = 0;
-  for (const group of sortedGroups) {
-    const store = storeById.get(group.storeId);
-    const rates = ratesByStoreId.get(group.storeId)!;
-    const routeBase = storeBillingRateForCategory(rates, group.category);
-    const total = group.count * routeBase;
-    routeBaseSubtotal += total;
+  for (const row of routeRows) {
+    routeBaseSubtotal += row.routeBase;
     lineItems.push({
-      date: group.date,
-      description: `${store?.storeName ?? 'Store'} - Route Base Pay`,
-      pay: group.count,
-      routeBase,
-      total,
+      date: row.date,
+      description: "Route Base Pay",
+      pay: 1,
+      routeBase: row.routeBase,
+      hoursSpent: row.hoursSpent,
+      total: row.routeBase,
+    });
+  }
+
+  if (totalRouteCount > 0) {
+    lineItems.push({
+      date: leadTime,
+      description: 'Total time on routes',
+      pay: totalRouteCount,
+      routeBase: 0,
+      hoursSpent: Math.round(totalHoursSpent * 100) / 100,
+      total: 0,
     });
   }
 
@@ -238,18 +254,8 @@ export function buildStoreInvoiceData(input: {
       description: 'Weekly Performance Incentive',
       pay: totalRouteCount,
       routeBase: input.weeklyPerformanceIncentiveRate,
+      hoursSpent: 0,
       total: weeklyPerformanceIncentiveTotal,
-    });
-  }
-
-  const defaultOtRate = input.defaults.overtimeHourlyRate;
-  if (totalOvertimeHours > 0) {
-    lineItems.push({
-      date: leadTime,
-      description: `overtime hours${totalOvertimeHours}*$${defaultOtRate}`,
-      pay: totalOvertimeHours,
-      routeBase: defaultOtRate,
-      total: overtimeTotal,
     });
   }
 
@@ -258,10 +264,21 @@ export function buildStoreInvoiceData(input: {
     description: 'Rural',
     pay: 0,
     routeBase: 0,
-    total: 0,
+    hoursSpent: 0,
+    total: ruralAmount,
   });
 
-  const subtotal = routeBaseSubtotal + weeklyPerformanceIncentiveTotal + overtimeTotal;
+  lineItems.push({
+    date: '',
+    description: 'OT',
+    pay: 0,
+    routeBase: 0,
+    hoursSpent: 0,
+    total: overtimeAmount,
+  });
+
+  const subtotal =
+    routeBaseSubtotal + weeklyPerformanceIncentiveTotal + ruralAmount + overtimeAmount;
   const taxRate = 0;
   const taxAmount = 0;
 
@@ -286,9 +303,9 @@ export function buildStoreInvoiceData(input: {
     storeLines,
     lineItems,
     totalRouteCount,
-    totalOvertimeHours,
-    overtimeHourlyRate: defaultOtRate,
-    overtimeTotal,
+    totalHoursSpent: Math.round(totalHoursSpent * 100) / 100,
+    ruralAmount,
+    overtimeAmount,
     weeklyPerformanceIncentiveRate: input.weeklyPerformanceIncentiveRate,
     weeklyPerformanceIncentiveTotal,
     subtotal,

@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
 
 const ScheduleSchema = new Schema(
@@ -22,4 +23,4 @@ const ScheduleSchema = new Schema(
 ScheduleSchema.index({ date: 1, city: 1, state: 1 });
 ScheduleSchema.index({ createdBy: 1, date: -1 });
 
-export const ScheduleModel = model('Schedule', ScheduleSchema);
+export const ScheduleModel = createScopedModel('Schedule', ScheduleSchema);

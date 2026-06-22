@@ -12,13 +12,15 @@ export class DriverLocationRepository {
     driverId: string;
     lat: number;
     lng: number;
+    recordedAt?: Date;
   }): Promise<DriverLocationPoint> {
+    const recordedAt = params.recordedAt ?? new Date();
     const doc = await DriverLocationModel.create({
       routeId: params.routeId,
       driverId: params.driverId,
       lat: params.lat,
       lng: params.lng,
-      recordedAt: new Date(),
+      recordedAt,
     });
     return {
       lat: doc.lat,

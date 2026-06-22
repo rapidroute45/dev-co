@@ -15,6 +15,7 @@ import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.
 import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
 import { sanitizeRoutePayloadForRole } from '../../../../shared/utils/routeCategoryAccess';
 import { UserRole } from '../../../../shared/constants/roles';
+import { RouteStopStatus } from '../../../../shared/constants/routeStopStatuses';
 
 function sanitizeRouteData<T>(data: T, role: UserRole | null | undefined): T {
   if (Array.isArray(data)) {
@@ -282,6 +283,50 @@ export class RouteController {
     }
   };
 
+  reportLocationBatch = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const body = req.body as {
+        locations?: Array<{
+          lat?: number;
+          lng?: number;
+          latitude?: number;
+          longitude?: number;
+          recordedAt?: string;
+          timestamp?: string;
+        }>;
+        location?: Array<{
+          lat?: number;
+          lng?: number;
+          latitude?: number;
+          longitude?: number;
+          recordedAt?: string;
+          timestamp?: string;
+        }>;
+        backgroundSharing?: boolean;
+      };
+      const rawLocations = Array.isArray(body.locations)
+        ? body.locations
+        : Array.isArray(body.location)
+          ? body.location
+          : [];
+      const points = rawLocations.map((p) => ({
+        lat: Number(p?.lat ?? p?.latitude),
+        lng: Number(p?.lng ?? p?.longitude),
+        recordedAt: p?.recordedAt ?? p?.timestamp,
+      }));
+      const data = await this.routeDeliveryUseCase.reportLocationBatch(
+        String(req.params.id),
+        req.user.id,
+        points,
+        Boolean(body.backgroundSharing)
+      );
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   completeStop = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
@@ -319,6 +364,75 @@ export class RouteController {
       res.status(200).json({
         success: true,
         message: data.routeCompleted ? 'Stop marked as return. Route finished.' : 'Stop marked as return.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  opsCompleteStop = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.routeDeliveryUseCase.completeStopAsDispatch(
+        String(req.params.routeId),
+        String(req.params.stopId),
+        req.user
+      );
+      res.status(200).json({
+        success: true,
+        message: data.routeCompleted ? 'Stop delivered. Route finished.' : 'Stop marked as delivered.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  opsReturnStop = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { reason, customReason } = req.body as {
+        reason?: string;
+        customReason?: string;
+      };
+      if (!reason) return next(new AppError('reason is required.', 400));
+
+      const data = await this.routeDeliveryUseCase.returnStopAsDispatch(
+        String(req.params.routeId),
+        String(req.params.stopId),
+        reason,
+        customReason,
+        req.user
+      );
+      res.status(200).json({
+        success: true,
+        message: data.routeCompleted ? 'Stop marked as failure. Route finished.' : 'Stop marked as failure.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  opsUpdateStopStatus = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const { status, reason, customReason } = req.body as {
+        status?: RouteStopStatus;
+        reason?: string;
+        customReason?: string;
+      };
+      if (!status) return next(new AppError('status is required.', 400));
+
+      const data = await this.routeDeliveryUseCase.updateStopStatusAsDispatch(
+        String(req.params.routeId),
+        String(req.params.stopId),
+        status,
+        req.user,
+        reason,
+        customReason
+      );
+      res.status(200).json({
+        success: true,
+        message: 'Stop status updated.',
         data,
       });
     } catch (error) {

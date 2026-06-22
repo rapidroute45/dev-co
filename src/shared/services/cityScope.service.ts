@@ -98,3 +98,28 @@ export function applyCityListFilter(
     }));
   }
 }
+
+/** Only admin and dispatch manager may use global state/city list filters. */
+export function canUseGlobalLocationScope(actor?: CityActor): boolean {
+  return actor?.role === UserRole.ADMIN || actor?.role === UserRole.DISPATCH_MANAGER;
+}
+
+/**
+ * Strip global location query params for non-managers.
+ * Dispatch team keeps `city` for mergeCityListFilter enforcement; everyone else loses both.
+ */
+export function resolveGlobalLocationQuery(
+  actor: CityActor | undefined,
+  query: Record<string, string>
+): Record<string, string> {
+  if (canUseGlobalLocationScope(actor)) return query;
+
+  const next = { ...query };
+  delete next.state;
+
+  if (actor?.role !== UserRole.DISPATCH_TEAM) {
+    delete next.city;
+  }
+
+  return next;
+}

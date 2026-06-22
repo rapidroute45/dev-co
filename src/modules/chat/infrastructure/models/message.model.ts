@@ -1,4 +1,5 @@
-import { Schema, model, Types } from 'mongoose';
+import { Schema, Types } from 'mongoose';
+import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
 const MessageSchema = new Schema(
   {
@@ -7,7 +8,7 @@ const MessageSchema = new Schema(
     body: { type: String, required: true, trim: true },
     type: {
       type: String,
-      enum: ['text', 'system', 'delivery_photo', 'voice'],
+      enum: ['text', 'system', 'delivery_photo', 'voice', 'document'],
       default: 'text',
     },
     meta: {
@@ -17,6 +18,10 @@ const MessageSchema = new Schema(
       stopName: { type: String, default: null },
       audioUrl: { type: String, default: null },
       durationMs: { type: Number, default: null },
+      fileUrl: { type: String, default: null },
+      fileName: { type: String, default: null },
+      fileSize: { type: Number, default: null },
+      mimeType: { type: String, default: null },
     },
     deliveredTo: [{ type: Types.ObjectId, ref: 'User' }],
     readBy: [{ type: Types.ObjectId, ref: 'User' }],
@@ -26,4 +31,4 @@ const MessageSchema = new Schema(
 
 MessageSchema.index({ conversationId: 1, createdAt: -1 });
 
-export const MessageModel = model('ChatMessage', MessageSchema);
+export const MessageModel = createScopedModel('ChatMessage', MessageSchema);

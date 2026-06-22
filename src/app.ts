@@ -17,6 +17,7 @@ import { payrollRoutes } from './modules/payroll';
 import { cityRoutes } from './modules/cities';
 import { AppError } from './shared/errors/app-error';
 import { UPLOADS_DIR } from './shared/upload/upload.config';
+import { dbEnvironmentMiddleware } from './config/dbContext';
 
 const app = express();
 
@@ -27,10 +28,12 @@ const corsOrigins = process.env.CORS_ORIGINS
 app.use(cors({
   origin: corsOrigins,
   credentials: true,
+  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Dispatch-Environment'],
 }));
 
 app.use(express.json());
-app.use(cookieParser()); // 3. Mount cookie parser here!
+app.use(cookieParser());
+app.use(dbEnvironmentMiddleware);
 app.use('/uploads', express.static(UPLOADS_DIR));
 
 app.use('/api/v1/auth', authRoutes);
