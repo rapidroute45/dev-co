@@ -10,11 +10,18 @@ import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { UserRole } from '../../../../shared/constants/roles';
 import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
+import { NotificationService } from '../../../notifications/application/services/notification.service';
+import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
+import { resolveManagerAndAdminRecipientIds } from '../../../../shared/services/routeOpsRecipients.service';
+import { resolveDisplayName } from '../../../../shared/utils/displayName';
+import { formatScheduleDate } from '../utils/scheduleDate';
 
 export class CreateScheduleUseCase {
   constructor(
     private scheduleRepo: IScheduleRepository,
-    private storeRepo: IStoreRepository
+    private storeRepo: IStoreRepository,
+    private notificationService: NotificationService,
+    private userRepo: IUserRepository
   ) {}
 
   async execute(dto: CreateScheduleDTO, createdByUserId: string, actor?: CityActor) {
@@ -73,6 +80,24 @@ export class CreateScheduleUseCase {
     });
 
     const saved = await this.scheduleRepo.save(schedule);
+
+    if (actor?.role === UserRole.DISPATCH_TEAM && saved.id) {
+      const actorUser = await this.userRepo.findById(createdByUserId);
+      const actorName = resolveDisplayName(actorUser?.fullName, actorUser?.email ?? 'Dispatch team');
+      const recipientIds = await resolveManagerAndAdminRecipientIds(this.userRepo, [
+        createdByUserId,
+      ]);
+      await this.notificationService.notifyScheduleCreated({
+        recipientIds,
+        scheduleId: saved.id,
+        storeName: store.storeName ?? 'Store',
+        city,
+        state,
+        scheduleDate: formatScheduleDate(date),
+        actorName,
+      });
+    }
+
     return mapScheduleToResponse(saved, store, []);
   }
 }

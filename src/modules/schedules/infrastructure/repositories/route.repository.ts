@@ -35,6 +35,7 @@ function mapDoc(doc: {
   driverLat?: number | null;
   driverLng?: number | null;
   driverLocationAt?: Date | null;
+  driverLocationIngestedAt?: Date | null;
   driverLocationBackgroundSharing?: boolean;
   startedAt?: Date | null;
   completedAt?: Date | null;
@@ -72,6 +73,7 @@ function mapDoc(doc: {
     driverLat: doc.driverLat ?? null,
     driverLng: doc.driverLng ?? null,
     driverLocationAt: doc.driverLocationAt ?? null,
+    driverLocationIngestedAt: doc.driverLocationIngestedAt ?? null,
     driverLocationBackgroundSharing: Boolean(doc.driverLocationBackgroundSharing),
     startedAt: doc.startedAt ?? null,
     completedAt: doc.completedAt ?? null,

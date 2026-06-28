@@ -13,6 +13,9 @@ import {
   emitMessagesRead,
 } from '../../socket/chat.socket';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
+import { NotificationType } from '../../../notifications/domain/entities/notification.entity';
+import { PushMessagingService } from '../../../notifications/infrastructure/push/pushMessaging.service';
+import { DeviceTokenRepository } from '../../../notifications/infrastructure/repositories/deviceToken.repository';
 
 const OPS_CHAT_ROLES = [
   UserRole.ADMIN,
@@ -49,11 +52,53 @@ function displayNameOf(u?: UserSummary | null) {
 }
 
 export class ChatService {
+  private pushService = new PushMessagingService(new DeviceTokenRepository());
+
   constructor(
     private userRepo: UserRepository,
     private routeRepo: IRouteRepository,
     private scheduleRepo: IScheduleRepository
   ) {}
+
+  private pushChatMessageToRecipients(params: {
+    conversationId: string;
+    senderId: string;
+    senderName: string;
+    preview: string;
+    recipientIds: string[];
+    conversationTitle?: string | null;
+    isGroup?: boolean;
+  }): void {
+    const recipients = [...new Set(params.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const title = params.isGroup
+      ? params.conversationTitle?.trim() || 'Group chat'
+      : params.senderName;
+    const body = params.isGroup
+      ? `${params.senderName}: ${params.preview}`
+      : params.preview;
+
+    void this.pushService
+      .sendToRecipients({
+        recipientIds: recipients,
+        title,
+        body: body.slice(0, 120),
+        type: NotificationType.CHAT_MESSAGE,
+        payload: {
+          conversationId: params.conversationId,
+          senderId: params.senderId,
+          deepLink: `/chat/${params.conversationId}`,
+        },
+      })
+      .catch((error) => {
+        console.error('[push] chat message push failed', {
+          conversationId: params.conversationId,
+          recipientCount: recipients.length,
+          error,
+        });
+      });
+  }
 
   private async getUserMap(ids: string[]) {
     const unique = [...new Set(ids.map(String))].filter(Boolean);
@@ -391,20 +436,37 @@ export class ChatService {
     }
 
     const participants = [params.creatorId, ...requested];
-    const conv = await ConversationModel.create({
-      kind: 'group',
-      title,
-      createdBy: params.creatorId,
-      admins: [params.creatorId],
-      participants,
-      lastMessageAt: new Date(),
-      lastMessagePreview: `${displayNameOf({
-        id: creator.id!,
-        email: creator.email,
-        fullName: creator.fullName,
-      })} created "${title}"`,
-      lastSenderId: params.creatorId,
-    });
+    let conv: InstanceType<typeof ConversationModel>;
+    try {
+      conv = await ConversationModel.create({
+        kind: 'group',
+        title,
+        createdBy: params.creatorId,
+        admins: [params.creatorId],
+        participants,
+        lastMessageAt: new Date(),
+        lastMessagePreview: `${displayNameOf({
+          id: creator.id!,
+          email: creator.email,
+          fullName: creator.fullName,
+        })} created "${title}"`,
+        lastSenderId: params.creatorId,
+      });
+    } catch (error) {
+      const duplicateKey = (error as { code?: number; keyPattern?: Record<string, unknown> }).code === 11000;
+      const keyPattern = (error as { keyPattern?: Record<string, unknown> }).keyPattern;
+      if (
+        duplicateKey &&
+        keyPattern?.managerId != null &&
+        keyPattern?.driverId != null
+      ) {
+        throw new AppError(
+          'Could not create group due to a stale chat database index. Run migration 004-fix-chat-group-index.',
+          409
+        );
+      }
+      throw error;
+    }
 
     await MessageModel.create({
       conversationId: conv._id,
@@ -692,15 +754,26 @@ export class ChatService {
     await conv.save();
 
     const sender = await this.userRepo.findById(params.senderId);
+    const senderName = displayNameOf(sender as unknown as UserSummary);
     const participantIds = this.participantsOf(conv).filter(
       (id) => id !== String(params.senderId)
     );
+
+    this.pushChatMessageToRecipients({
+      conversationId: String(conv._id),
+      senderId: params.senderId,
+      senderName,
+      preview: params.preview,
+      recipientIds: participantIds,
+      conversationTitle: conv.title,
+      isGroup: conv.kind === 'group',
+    });
 
     return {
       id: String(msg._id),
       conversationId: String(conv._id),
       senderId: params.senderId,
-      senderName: displayNameOf(sender as unknown as UserSummary),
+      senderName,
       senderRole: sender?.role ?? null,
       body: msg.body,
       type: msg.type,
@@ -862,6 +935,15 @@ export class ChatService {
       managerId: opsUserId,
       driverId: params.driverId,
       message: payload,
+    });
+
+    const driver = await this.userRepo.findById(params.driverId);
+    this.pushChatMessageToRecipients({
+      conversationId: String(conv._id),
+      senderId: params.driverId,
+      senderName: displayNameOf(driver as unknown as UserSummary),
+      preview: body,
+      recipientIds: [opsUserId],
     });
   }
 }

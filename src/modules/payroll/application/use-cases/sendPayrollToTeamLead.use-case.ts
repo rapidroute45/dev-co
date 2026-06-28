@@ -32,8 +32,16 @@ export class SendPayrollToTeamLeadUseCase {
     const bill = await this.payrollRepo.findById(billId);
     if (!bill) throw new AppError('Payroll bill not found.', 404);
 
-    if (bill.status !== PayrollStatus.DRAFT && bill.status !== PayrollStatus.TEAM_LEAD_DISPUTED) {
-      throw new AppError('Only draft or disputed bills can be sent to the team lead.', 409);
+    const isResend = bill.status === PayrollStatus.PENDING_TEAM_LEAD;
+    if (
+      bill.status !== PayrollStatus.DRAFT &&
+      bill.status !== PayrollStatus.TEAM_LEAD_DISPUTED &&
+      !isResend
+    ) {
+      throw new AppError(
+        'Only draft, disputed, or in-review bills can be sent to the team lead.',
+        409
+      );
     }
     if (bill.lineItems.length === 0) {
       throw new AppError('Cannot send an empty payroll bill.', 400);
@@ -42,6 +50,8 @@ export class SendPayrollToTeamLeadUseCase {
     const updated = await this.payrollRepo.update(billId, {
       status: PayrollStatus.PENDING_TEAM_LEAD,
       sentToTeamLeadAt: new Date(),
+      teamLeadAcknowledgedAt: null,
+      teamLeadReviewedAt: null,
       teamLeadNote: bill.status === PayrollStatus.TEAM_LEAD_DISPUTED ? null : bill.teamLeadNote,
     });
     if (!updated) throw new AppError('Failed to send payroll bill.', 500);
@@ -51,7 +61,7 @@ export class SendPayrollToTeamLeadUseCase {
     await this.audit.log({
       userId: actor.id,
       userName: actorUser?.fullName?.trim() || actorUser?.email || 'User',
-      action: 'payroll_sent_to_team_lead',
+      action: isResend ? 'payroll_resent_to_team_lead' : 'payroll_sent_to_team_lead',
       entityType: 'PayrollBill',
       entityId: billId,
       oldValue: { status: bill.status },
@@ -66,9 +76,9 @@ export class SendPayrollToTeamLeadUseCase {
         teamId: bill.teamId,
         teamName: bill.teamName,
         billId,
-        totalAmount: bill.totalAmount,
-        periodStart: formatScheduleDate(bill.periodStart),
-        periodEnd: formatScheduleDate(bill.periodEnd),
+        totalAmount: updated.totalAmount,
+        periodStart: formatScheduleDate(updated.periodStart),
+        periodEnd: formatScheduleDate(updated.periodEnd),
       });
     }
 

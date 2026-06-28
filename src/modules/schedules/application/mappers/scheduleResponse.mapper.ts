@@ -64,7 +64,7 @@ export function mapRouteToResponse(
       returnedDropoffs: number;
       pendingDropoffs: number;
     };
-    driverLocation?: { lat: number; lng: number; updatedAt?: Date | null; sharingInBackground?: boolean } | null;
+    driverLocation?: { lat: number; lng: number; updatedAt?: Date | null; ingestedAt?: Date | null; sharingInBackground?: boolean } | null;
     totalMiles?: number | null;
     driverRoutePath?: { lat: number; lng: number; recordedAt?: Date | string | null }[];
   }

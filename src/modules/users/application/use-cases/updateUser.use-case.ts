@@ -7,8 +7,55 @@ import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 import { canAssignRole } from '../../../../shared/constants/assignableRoles';
 import { roleRequiresCity, roleRequiresTeam } from '../../../../shared/constants/roleRequirements';
 import { AppError } from '../../../../shared/errors/app-error';
-import { mapUserToResponse, UserTeamBrief } from '../mappers/userResponse.mapper';
+import { User } from '../../../auth/domain/entities/user.entity';
+import { mapUserToResponse, UserTeamBrief, resolveUserAssignedCities } from '../mappers/userResponse.mapper';
 import { parsePhoneInput } from '../../../../shared/utils/phone';
+import { NotificationService } from '../../../notifications/application/services/notification.service';
+import { resolveDisplayName } from '../../../../shared/utils/displayName';
+
+function isOpsManagerActor(role: UserRole): boolean {
+  return role === UserRole.ADMIN || role === UserRole.DISPATCH_MANAGER;
+}
+
+function citiesEqual(a: string[], b: string[]): boolean {
+  const left = [...a].map((c) => c.trim().toLowerCase()).sort().join('|');
+  const right = [...b].map((c) => c.trim().toLowerCase()).sort().join('|');
+  return left === right;
+}
+
+function buildDispatchTeamUpdateSummary(
+  before: User,
+  after: User,
+  dto: UpdateUserDTO
+): string | null {
+  const parts: string[] = [];
+  const beforeCities = resolveUserAssignedCities(before);
+  const afterCities = resolveUserAssignedCities(after);
+
+  if (
+    (dto.assignedCity !== undefined || dto.assignedCities !== undefined) &&
+    !citiesEqual(beforeCities, afterCities)
+  ) {
+    parts.push(`Cities updated to ${afterCities.join(', ') || 'none'}`);
+  }
+  if (dto.fullName !== undefined && (before.fullName ?? '') !== (after.fullName ?? '')) {
+    parts.push('Name updated');
+  }
+  if (dto.phone !== undefined && (before.phone ?? '') !== (after.phone ?? '')) {
+    parts.push('Phone updated');
+  }
+  if (dto.status !== undefined && before.status !== after.status) {
+    parts.push(`Status changed to ${after.status}`);
+  }
+  if (dto.role !== undefined && before.role !== after.role) {
+    parts.push(`Role changed to ${after.role}`);
+  }
+  if (dto.password) {
+    parts.push('Password reset');
+  }
+
+  return parts.length > 0 ? `${parts.join('. ')}.` : null;
+}
 
 export interface UpdateUserDTO {
   fullName?: string | null;
@@ -27,10 +74,35 @@ export class UpdateUserUseCase {
 
   constructor(
     private userRepo: IUserRepository,
-    private teamRepo: ITeamRepository
+    private teamRepo: ITeamRepository,
+    private notificationService: NotificationService
   ) {
     this.teamAssignment = new TeamAssignmentService(userRepo, teamRepo);
     this.cityAssignment = new CityAssignmentService(userRepo);
+  }
+
+  private async maybeNotifyDispatchTeamUpdated(
+    before: User,
+    after: User,
+    dto: UpdateUserDTO,
+    actorRole: UserRole,
+    actorUserId?: string
+  ): Promise<void> {
+    if (!isOpsManagerActor(actorRole) || !actorUserId) return;
+    if (after.role !== UserRole.DISPATCH_TEAM || !after.id) return;
+
+    const summary = buildDispatchTeamUpdateSummary(before, after, dto);
+    if (!summary) return;
+
+    const actorUser = await this.userRepo.findById(actorUserId);
+    const actorName = resolveDisplayName(actorUser?.fullName, actorUser?.email ?? 'Dispatch');
+
+    await this.notificationService.notifyDispatchTeamUpdated({
+      recipientId: after.id,
+      userId: after.id,
+      actorName,
+      summary,
+    });
   }
 
   private async loadTeamBrief(teamId: string | null): Promise<UserTeamBrief> {
@@ -65,7 +137,7 @@ export class UpdateUserUseCase {
     });
   }
 
-  async execute(userId: string, dto: UpdateUserDTO, actorRole: UserRole) {
+  async execute(userId: string, dto: UpdateUserDTO, actorRole: UserRole, actorUserId?: string) {
     const user = await this.userRepo.findById(userId);
     if (!user) throw new AppError('User not found', 404);
 
@@ -125,6 +197,7 @@ export class UpdateUserUseCase {
       });
 
       if (!updated) throw new AppError('Failed to update user', 500);
+      await this.maybeNotifyDispatchTeamUpdated(user, updated, dto, actorRole, actorUserId);
       return mapUserToResponse(updated, team);
     }
 
@@ -143,6 +216,7 @@ export class UpdateUserUseCase {
         passwordHash,
       });
       if (!updated) throw new AppError('Failed to update user', 500);
+      await this.maybeNotifyDispatchTeamUpdated(user, updated, dto, actorRole, actorUserId);
       return mapUserToResponse(updated, team);
     }
 
@@ -161,6 +235,7 @@ export class UpdateUserUseCase {
     });
 
     if (!updated) throw new AppError('Failed to update user', 500);
+    await this.maybeNotifyDispatchTeamUpdated(user, updated, dto, actorRole, actorUserId);
     return mapUserToResponse(updated, await this.loadTeamBrief(updated.teamId));
   }
 }

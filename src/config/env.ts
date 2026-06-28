@@ -36,6 +36,12 @@ export const ENV = {
   JWT_ACCESS_EXPIRES_IN: process.env.JWT_ACCESS_EXPIRES_IN || '7d',
   /** Login cookie lifetime — keep in sync with JWT access token */
   SESSION_MAX_AGE_MS: 7 * 24 * 60 * 60 * 1000,
+  /** Firebase Cloud Messaging (optional — push skipped when unset) */
+  FIREBASE_PROJECT_ID: process.env.FIREBASE_PROJECT_ID?.trim() || '',
+  FIREBASE_SERVICE_ACCOUNT_JSON: process.env.FIREBASE_SERVICE_ACCOUNT_JSON?.trim() || '',
+  FIREBASE_SERVICE_ACCOUNT_PATH: process.env.FIREBASE_SERVICE_ACCOUNT_PATH?.trim() || '',
+  /** Origin for web push click URLs, e.g. https://app.example.com */
+  WEB_APP_ORIGIN: process.env.WEB_APP_ORIGIN?.trim().replace(/\/$/, '') || '',
 };
 
 /** Extract database name from a MongoDB URI for logging (never log credentials). */

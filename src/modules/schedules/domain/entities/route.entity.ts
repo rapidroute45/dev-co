@@ -29,6 +29,7 @@ export interface RouteProps {
   driverLat?: number | null;
   driverLng?: number | null;
   driverLocationAt?: Date | null;
+  driverLocationIngestedAt?: Date | null;
   driverLocationBackgroundSharing?: boolean;
   startedAt?: Date | null;
   completedAt?: Date | null;
@@ -127,6 +128,9 @@ export class Route {
   }
   get driverLocationAt() {
     return this.props.driverLocationAt ?? null;
+  }
+  get driverLocationIngestedAt() {
+    return this.props.driverLocationIngestedAt ?? null;
   }
   get driverLocationBackgroundSharing() {
     return Boolean(this.props.driverLocationBackgroundSharing);

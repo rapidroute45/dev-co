@@ -28,6 +28,10 @@ import {
 import { UserRole } from '../../../../shared/constants/roles';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { emitRouteUpdated } from '../../../chat/socket/chat.socket';
+import {
+  resolveRouteOpsRecipientIds,
+  resolveManagerAndAdminRecipientIds,
+} from '../../../../shared/services/routeOpsRecipients.service';
 import { TeamLeadScheduleAlertService } from '../services/teamLeadScheduleAlert.service';
 import { RouteAutoCompleteService } from '../services/routeAutoComplete.service';
 
@@ -351,6 +355,34 @@ export class UpdateRouteUseCase {
     }
 
     if (
+      actor?.role === UserRole.TEAM_LEAD &&
+      driverChanged &&
+      driverId &&
+      driver
+    ) {
+      const store = await this.storeRepo.findById(schedule.storeId);
+      const recipientIds = await resolveRouteOpsRecipientIds(
+        this.userRepo,
+        schedule.city,
+        [driverId]
+      );
+      await this.notificationService.notifyRouteDriverAssignedToOps({
+        recipientIds,
+        driverId,
+        driverName: resolveDisplayName(driver.fullName, driver.email),
+        scheduleDate: formatScheduleDate(schedule.date),
+        storeName: store?.storeName ?? 'Store',
+        city: schedule.city,
+        state: schedule.state,
+        arrivalTime: times.arrivalTime,
+        departureTime: times.departureTime,
+        teamName: team.name,
+        routeId: updated.id!,
+        scheduleId: schedule.id!,
+      });
+    }
+
+    if (
       dto.opsVerificationStatus === OpsVerificationStatus.TEAM_VERIFIED &&
       actor?.role === UserRole.DISPATCH_TEAM
     ) {
@@ -371,6 +403,49 @@ export class UpdateRouteUseCase {
 
     await this.scheduleActivation.syncFromRoutes(updated.scheduleId);
     await this.teamLeadAlertService.syncForSchedule(updated.scheduleId);
+
+    const dispatchTeamRouteFields = [
+      'teamId',
+      'driverId',
+      'arrivalTime',
+      'departureTime',
+      'routeName',
+      'routeCategory',
+      'location',
+      'vehicleType',
+      'mileage',
+      'stopDetails',
+      'pickupDetail',
+      'stops',
+      'notes',
+      'overtimeHours',
+      'status',
+      'deliveryVerification',
+    ];
+    const hasDispatchTeamRouteEdit =
+      actor?.role === UserRole.DISPATCH_TEAM &&
+      dispatchTeamRouteFields.some((key) => dto[key] !== undefined);
+
+    if (hasDispatchTeamRouteEdit) {
+      const store = await this.storeRepo.findById(schedule.storeId);
+      const actorUser = await this.userRepo.findById(_assignedByUserId);
+      const actorName = resolveDisplayName(actorUser?.fullName, actorUser?.email ?? 'Dispatch team');
+      const recipientIds = await resolveManagerAndAdminRecipientIds(this.userRepo, [
+        _assignedByUserId,
+      ]);
+      await this.notificationService.notifyRouteUpdatedByDispatchTeam({
+        recipientIds,
+        routeId: updated.id!,
+        scheduleId: schedule.id!,
+        routeName: updated.routeName,
+        storeName: store?.storeName ?? 'Store',
+        city: schedule.city,
+        state: schedule.state,
+        scheduleDate: formatScheduleDate(schedule.date),
+        teamName: team.name,
+        actorName,
+      });
+    }
 
     const realtimeDriverIds: string[] = [];
     if (driverId) realtimeDriverIds.push(driverId);

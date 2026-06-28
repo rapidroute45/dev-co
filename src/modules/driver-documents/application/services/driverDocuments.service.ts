@@ -6,8 +6,6 @@ import { DocumentRequirementModel } from '../../infrastructure/models/documentRe
 import { DriverDocumentSubmissionModel } from '../../infrastructure/models/driverDocumentSubmission.model';
 import { DriverVehicleProfileModel } from '../../infrastructure/models/driverVehicleProfile.model';
 import { NotificationService } from '../../../notifications/application/services/notification.service';
-import { NotificationType } from '../../../notifications/domain/entities/notification.entity';
-import { Notification } from '../../../notifications/domain/entities/notification.entity';
 import { INotificationRepository } from '../../../notifications/domain/interfaces/notification-repository.interface';
 import { resolveDisplayName } from '../../../../shared/utils/displayName';
 
@@ -400,16 +398,10 @@ export class DriverDocumentsService {
     doc.rejectionReason = null;
     await doc.save();
 
-    await this.notificationRepo.save(
-      new Notification({
-        recipientId: driverId,
-        type: NotificationType.DOCUMENT_VERIFIED,
-        title: 'Document verified',
-        message: 'A document was approved by dispatch.',
-        payload: { requirementId },
-        read: false,
-      })
-    );
+    await this.notificationService.notifyDocumentVerified({
+      recipientId: driverId,
+      requirementId,
+    });
 
     return this.getDriverDocumentsForManager(driverId);
   }
@@ -429,16 +421,11 @@ export class DriverDocumentsService {
     doc.verifiedAt = null;
     await doc.save();
 
-    await this.notificationRepo.save(
-      new Notification({
-        recipientId: driverId,
-        type: NotificationType.DOCUMENT_REJECTED,
-        title: 'Document needs attention',
-        message: doc.rejectionReason,
-        payload: { requirementId },
-        read: false,
-      })
-    );
+    await this.notificationService.notifyDocumentRejected({
+      recipientId: driverId,
+      requirementId,
+      reason: doc.rejectionReason,
+    });
 
     return this.getDriverDocumentsForManager(driverId);
   }
@@ -478,20 +465,11 @@ export class DriverDocumentsService {
     })) as RequirementDoc;
 
     const drivers = await this.userRepo.findActiveDrivers();
-    await Promise.all(
-      drivers.map((driver) =>
-        this.notificationRepo.save(
-          new Notification({
-            recipientId: driver.id!,
-            type: NotificationType.DOCUMENT_REQUIRED,
-            title: 'New document required',
-            message: `Please upload: ${created.title}`,
-            payload: { requirementId: created._id.toString() as string },
-            read: false,
-          })
-        )
-      )
-    );
+    await this.notificationService.notifyDocumentRequiredBatch({
+      recipientIds: drivers.map((d) => d.id!).filter(Boolean),
+      requirementId: created._id.toString(),
+      requirementTitle: created.title,
+    });
 
     return this.mapRequirement(created);
   }
@@ -537,20 +515,11 @@ export class DriverDocumentsService {
 
     const drivers = await this.userRepo.findActiveDrivers();
     const title = updated.title;
-    await Promise.all(
-      drivers.map((driver) =>
-        this.notificationRepo.save(
-          new Notification({
-            recipientId: driver.id!,
-            type: NotificationType.DOCUMENT_UPDATED,
-            title: 'Document requirement updated',
-            message: `Please review: ${title}`,
-            payload: { requirementId: updated._id.toString() },
-            read: false,
-          })
-        )
-      )
-    );
+    await this.notificationService.notifyDocumentUpdatedBatch({
+      recipientIds: drivers.map((d) => d.id!).filter(Boolean),
+      requirementId: updated._id.toString(),
+      requirementTitle: title,
+    });
 
     return this.mapRequirement(updated as RequirementDoc);
   }

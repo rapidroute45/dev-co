@@ -84,7 +84,8 @@ const teamLeadAlertService = new TeamLeadScheduleAlertService(
   scheduleRepo,
   routeRepo,
   storeRepo,
-  teamRepo
+  teamRepo,
+  notificationService
 );
 const stopProximity = new StopProximityService(routeStopRepo, routeRepo, scheduleRepo);
 const routeDelivery = new RouteDeliveryUseCase(
@@ -124,7 +125,8 @@ const controller = new RouteController(
     scheduleActivation,
     routeStopEnrichment,
     addressCodeRepo,
-    teamLeadAlertService
+    teamLeadAlertService,
+    userRepo
   ),
   new GetRouteUseCase(
     routeRepo,

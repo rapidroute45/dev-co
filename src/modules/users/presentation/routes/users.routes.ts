@@ -12,18 +12,21 @@ import { GetUserUseCase } from '../../application/use-cases/getUser.use-case';
 import { UpdateUserUseCase } from '../../application/use-cases/updateUser.use-case';
 import { DeleteUserUseCase } from '../../application/use-cases/deleteUser.use-case';
 import { UsersController } from '../controllers/users.controller';
+import { NotificationRepository } from '../../../notifications/infrastructure/repositories/notification.repository';
+import { NotificationService } from '../../../notifications/application/services/notification.service';
 
 const router = Router();
 const userRepo = new UserRepository();
 const teamRepo = new TeamRepository();
 const scheduleRepo = new ScheduleRepository();
 const routeRepo = new RouteRepository();
+const notificationService = new NotificationService(new NotificationRepository());
 
 const controller = new UsersController(
-  new CreateUserUseCase(userRepo, teamRepo),
+  new CreateUserUseCase(userRepo, teamRepo, notificationService),
   new ListUsersUseCase(userRepo, teamRepo, scheduleRepo, routeRepo),
   new GetUserUseCase(userRepo, teamRepo),
-  new UpdateUserUseCase(userRepo, teamRepo),
+  new UpdateUserUseCase(userRepo, teamRepo, notificationService),
   new DeleteUserUseCase(userRepo, teamRepo)
 );
 

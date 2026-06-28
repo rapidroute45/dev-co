@@ -268,6 +268,7 @@ export type DriverLocationUpdatedPayload = {
   lat: number;
   lng: number;
   recordedAt: string;
+  ingestedAt?: string;
   status: string;
   city: string;
   state: string;
@@ -288,6 +289,8 @@ export type DriverLocationUpdatedPayload = {
     startedAt?: string | null;
   };
   backgroundSharing?: boolean;
+  /** Full GPS segment from a batch upload so dispatch can draw the actual path. */
+  trailPoints?: { lat: number; lng: number; recordedAt: string }[];
 };
 
 export function emitDriverLocationUpdated(payload: DriverLocationUpdatedPayload) {

@@ -61,11 +61,12 @@ const teamLeadAlertService = new TeamLeadScheduleAlertService(
   scheduleRepo,
   routeRepo,
   storeRepo,
-  teamRepo
+  teamRepo,
+  notificationService
 );
 
 const controller = new ScheduleController(
-  new CreateScheduleUseCase(scheduleRepo, storeRepo),
+  new CreateScheduleUseCase(scheduleRepo, storeRepo, notificationService, userRepo),
   new ListSchedulesUseCase(scheduleRepo, storeRepo, routeRepo, userRepo),
   new GetScheduleUseCase(
     scheduleRepo,
@@ -77,7 +78,13 @@ const controller = new ScheduleController(
     teamLeadAlertService,
     routeAutoComplete
   ),
-  new UpdateScheduleUseCase(scheduleRepo, storeRepo, routeRepo),
+  new UpdateScheduleUseCase(
+    scheduleRepo,
+    storeRepo,
+    routeRepo,
+    notificationService,
+    userRepo
+  ),
   new DeleteScheduleUseCase(
     scheduleRepo,
     routeRepo,

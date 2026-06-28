@@ -8,6 +8,7 @@ const OPS_ROLES = [UserRole.ADMIN, UserRole.DISPATCH_MANAGER];
 const DELETABLE_STATUSES = new Set<PayrollStatus>([
   PayrollStatus.DRAFT,
   PayrollStatus.TEAM_LEAD_DISPUTED,
+  PayrollStatus.PENDING_TEAM_LEAD,
 ]);
 
 interface Actor {
@@ -26,7 +27,7 @@ export class DeletePayrollBillUseCase {
     if (!bill) throw new AppError('Payroll bill not found.', 404);
     if (!DELETABLE_STATUSES.has(bill.status)) {
       throw new AppError(
-        'Only draft or disputed bills can be deleted. Paid and in-review bills cannot be removed.',
+        'Only draft, with team lead, or disputed bills can be deleted. Approved and paid bills cannot be removed.',
         409
       );
     }

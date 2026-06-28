@@ -87,10 +87,12 @@ export class ScheduleController {
 
   update = async (req: Request, res: Response, next: NextFunction) => {
     try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
       const data = await this.updateScheduleUseCase.execute(
         String(req.params.id),
         req.body,
-        req.user
+        req.user,
+        req.user.id
       );
       res.status(200).json({
         success: true,

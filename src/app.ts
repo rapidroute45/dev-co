@@ -83,11 +83,16 @@ app.use((err: Error, req: Request, res: Response, next: NextFunction) => {
 
   if ((err as { code?: number }).code === 11000) {
     const key = (err as { keyPattern?: Record<string, unknown> }).keyPattern;
-    const message = key?.storeId
-      ? 'Store ID already exists. Please try again.'
-      : key?.code
-        ? 'Team code already exists. Please try again.'
-        : 'Email already in use';
+    let message = 'This record already exists.';
+    if (key?.email) {
+      message = 'Email already in use.';
+    } else if (key?.storeId) {
+      message = 'Store ID already exists. Please try again.';
+    } else if (key?.code) {
+      message = 'Team code already exists. Please try again.';
+    } else if (key?.managerId != null && key?.driverId != null) {
+      message = 'A conversation already exists for this pair.';
+    }
     res.status(400).json({ success: false, error: message });
     return;
   }

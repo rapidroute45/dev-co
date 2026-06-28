@@ -20,6 +20,9 @@ import { parseRouteCategoryInput } from '../../../../shared/utils/routeCategoryA
 import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 import { scheduleGeocodeContext } from '../utils/geocodeContext';
 import { emitRouteUpdated } from '../../../chat/socket/chat.socket';
+import { UserRole } from '../../../../shared/constants/roles';
+import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
+import { resolveManagerAndAdminRecipientIds } from '../../../../shared/services/routeOpsRecipients.service';
 
 import { TeamLeadScheduleAlertService } from '../services/teamLeadScheduleAlert.service';
 
@@ -34,7 +37,8 @@ export class CreateRouteUseCase {
     private scheduleActivation: ScheduleActivationService,
     private routeStopEnrichment: RouteStopEnrichmentService,
     private addressCodeRepo: AddressAccessCodeRepository,
-    private teamLeadAlertService: TeamLeadScheduleAlertService
+    private teamLeadAlertService: TeamLeadScheduleAlertService,
+    private userRepo: IUserRepository
   ) {}
 
   async execute(dto: CreateRouteDTO, assignedByUserId: string, actor?: CityActor) {
@@ -151,6 +155,21 @@ export class CreateRouteUseCase {
     await this.scheduleActivation.syncFromRoutes(dto.scheduleId);
     await this.teamLeadAlertService.syncForSchedule(dto.scheduleId);
 
+    if (!hasDriver && team.teamLeadId) {
+      await this.notificationService.notifyRouteNeedsDriver({
+        teamLeadId: team.teamLeadId,
+        scheduleDate: formatScheduleDate(schedule.date),
+        storeName: store?.storeName ?? 'Store',
+        city: schedule.city,
+        state: schedule.state,
+        arrivalTime: times.arrivalTime,
+        departureTime: times.departureTime,
+        teamName: team.name,
+        routeId: saved.id!,
+        scheduleId: schedule.id!,
+      });
+    }
+
     if (hasDriver && driver) {
       await this.notificationService.notifyRouteAssigned({
         driverId: dto.driverId!,
@@ -171,6 +190,26 @@ export class CreateRouteUseCase {
         scheduleId: schedule.id!,
         action: 'created',
         driverIds: [dto.driverId!],
+      });
+    }
+
+    if (actor?.role === UserRole.DISPATCH_TEAM) {
+      const actorUser = await this.userRepo.findById(assignedByUserId);
+      const actorName = resolveDisplayName(actorUser?.fullName, actorUser?.email ?? 'Dispatch team');
+      const recipientIds = await resolveManagerAndAdminRecipientIds(this.userRepo, [
+        assignedByUserId,
+      ]);
+      await this.notificationService.notifyRouteCreatedByDispatchTeam({
+        recipientIds,
+        routeId: saved.id!,
+        scheduleId: schedule.id!,
+        routeName: saved.routeName,
+        storeName: store.storeName ?? 'Store',
+        city: schedule.city,
+        state: schedule.state,
+        scheduleDate: formatScheduleDate(schedule.date),
+        teamName: team.name,
+        actorName,
       });
     }
 
