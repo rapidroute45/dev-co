@@ -84,6 +84,7 @@ const routeDelivery = new RouteDeliveryUseCase(
   routeStopEnrichment,
   routeAutoComplete,
   scheduleRepo,
+  storeRepo,
   locationMonitor
 );
 

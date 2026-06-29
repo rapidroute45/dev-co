@@ -484,6 +484,8 @@ export class RouteDeliveryUseCase {
         ordered.map((point) => ({
           lat: point.lat,
           lng: point.lng,
+          rawLat: point.rawLat,
+          rawLng: point.rawLng,
           recordedAt: point.recordedAt,
         })),
         scheduleCity
