@@ -68,6 +68,10 @@ const RouteSchema = new Schema(
       ],
       default: [],
     },
+    driverDwellAnchorLat: { type: Number, default: null },
+    driverDwellAnchorLng: { type: Number, default: null },
+    driverDwellStartedAt: { type: Date, default: null },
+    driverDwellAlertSentAt: { type: Date, default: null },
   },
   { timestamps: true }
 );

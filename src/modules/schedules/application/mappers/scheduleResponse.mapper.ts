@@ -64,11 +64,19 @@ export function mapRouteToResponse(
       returnedDropoffs: number;
       pendingDropoffs: number;
     };
-    driverLocation?: { lat: number; lng: number; updatedAt?: Date | null; ingestedAt?: Date | null; sharingInBackground?: boolean } | null;
     totalMiles?: number | null;
-    driverRoutePath?: { lat: number; lng: number; recordedAt?: Date | string | null }[];
   }
 ) {
+  const driverLocation =
+    route.driverLat != null && route.driverLng != null
+      ? {
+          lat: route.driverLat,
+          lng: route.driverLng,
+          updatedAt: route.driverLocationAt,
+          ingestedAt: route.driverLocationIngestedAt ?? route.driverLocationAt,
+        }
+      : null;
+
   return {
     id: route.id,
     scheduleId: route.scheduleId,
@@ -88,13 +96,8 @@ export function mapRouteToResponse(
     pickup: extras?.pickup ?? null,
     dropoffs: extras?.dropoffs ?? [],
     progress: extras?.progress ?? null,
-    driverLocation: extras?.driverLocation ?? null,
+    driverLocation,
     totalMiles: extras?.totalMiles ?? route.totalMiles ?? null,
-    driverRoutePath: (extras?.driverRoutePath ?? route.driverRoutePath ?? []).map((point) => ({
-      lat: point.lat,
-      lng: point.lng,
-      recordedAt: point.recordedAt ?? null,
-    })),
     arrivalTime: route.arrivalTime,
     departureTime: route.departureTime,
     arrivalMinutes: route.arrivalMinutes,

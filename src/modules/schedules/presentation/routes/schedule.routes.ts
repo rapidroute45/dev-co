@@ -11,10 +11,7 @@ import { ScheduleRepository } from '../../infrastructure/repositories/schedule.r
 import { RouteRepository } from '../../infrastructure/repositories/route.repository';
 import { RouteStopRepository } from '../../infrastructure/repositories/routeStop.repository';
 import { RouteStopEnrichmentService } from '../../application/services/routeStopEnrichment.service';
-import { DwellDetectionService } from '../../application/services/dwellDetection.service';
 import { RouteAutoCompleteService } from '../../application/services/routeAutoComplete.service';
-import { DriverLocationRepository } from '../../infrastructure/repositories/driverLocation.repository';
-import { RouteDwellSessionRepository } from '../../infrastructure/repositories/routeDwellSession.repository';
 import { CreateScheduleUseCase } from '../../application/use-cases/createSchedule.use-case';
 import { ListSchedulesUseCase } from '../../application/use-cases/listSchedules.use-case';
 import { GetScheduleUseCase } from '../../application/use-cases/getSchedule.use-case';
@@ -37,24 +34,9 @@ const storeRepo = new StoreRepository();
 const userRepo = new UserRepository();
 const teamRepo = new TeamRepository();
 const routeStopEnrichment = new RouteStopEnrichmentService(routeStopRepo);
-const driverLocationRepo = new DriverLocationRepository();
-const routeDwellSessionRepo = new RouteDwellSessionRepository();
 const notificationRepo = new NotificationRepository();
 const notificationService = new NotificationService(notificationRepo);
-const dwellDetection = new DwellDetectionService(
-  routeDwellSessionRepo,
-  teamRepo,
-  userRepo,
-  notificationService,
-  routeRepo,
-  scheduleRepo
-);
-const routeAutoComplete = new RouteAutoCompleteService(
-  routeRepo,
-  routeStopRepo,
-  driverLocationRepo,
-  dwellDetection
-);
+const routeAutoComplete = new RouteAutoCompleteService(routeRepo, routeStopRepo);
 const teamLeadAlertRepo = new TeamLeadScheduleAlertRepository();
 const teamLeadAlertService = new TeamLeadScheduleAlertService(
   teamLeadAlertRepo,
@@ -89,7 +71,6 @@ const controller = new ScheduleController(
     scheduleRepo,
     routeRepo,
     routeStopRepo,
-    driverLocationRepo,
     teamLeadAlertRepo
   ),
   new ListTeamLeadScheduleAlertsUseCase(teamLeadAlertService),

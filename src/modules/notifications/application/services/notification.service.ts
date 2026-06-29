@@ -199,153 +199,6 @@ export class NotificationService {
     );
   }
 
-  /**
-   * In-app alerts for ops when a driver is stationary past the dwell threshold.
-   * One Notification document per recipient (dispatch managers, admins, team lead).
-   */
-  async notifyDriverDwelling(input: {
-    recipientIds: string[];
-    routeId: string;
-    driverId: string;
-    driverName: string;
-    dwellSessionId: string;
-    centerLat: number;
-    centerLng: number;
-    dwellMinutes: number;
-    startedAt: string;
-  }): Promise<Notification[]> {
-    const payload = {
-      routeId: input.routeId,
-      driverId: input.driverId,
-      driverName: input.driverName,
-      dwellSessionId: input.dwellSessionId,
-      centerLat: input.centerLat,
-      centerLng: input.centerLng,
-      dwellMinutes: input.dwellMinutes,
-      startedAt: input.startedAt,
-      deepLink: `/routes/tracking/${input.routeId}`,
-    };
-
-    const title = 'Driver stationary on route';
-    const message = `${input.driverName} has been at the same location for ${input.dwellMinutes}+ minutes.`;
-
-    const recipients = [
-      ...new Set(
-        input.recipientIds.filter((id) => id && id !== input.driverId)
-      ),
-    ];
-    if (recipients.length === 0) {
-      console.warn('[dwell-notify] No recipients after filter (driver excluded?)', {
-        routeId: input.routeId,
-        driverId: input.driverId,
-        inputRecipientIds: input.recipientIds,
-      });
-      return [];
-    }
-
-    console.log('[dwell-notify] Creating in-app notifications', {
-      routeId: input.routeId,
-      driverName: input.driverName,
-      dwellMinutes: input.dwellMinutes,
-      recipients,
-    });
-
-    const saved = await Promise.all(
-      recipients.map((recipientId) =>
-        this.notificationRepo.save(
-          new Notification({
-            recipientId,
-            type: NotificationType.DRIVER_DWELLING,
-            title,
-            message,
-            payload,
-            read: false,
-            pushSent: false,
-          })
-        )
-      )
-    );
-
-    void this.sendPushIfSupported(
-      recipients,
-      title,
-      message,
-      payload,
-      NotificationType.DRIVER_DWELLING
-    );
-
-    console.log('[dwell-notify] Notifications saved', {
-      routeId: input.routeId,
-      count: saved.length,
-      notifications: saved.map((n) => ({
-        id: n.id,
-        recipientId: n.recipientId,
-        type: n.type,
-        title: n.title,
-      })),
-    });
-
-    return saved;
-  }
-
-  /** Ops review GPS proof after a stop auto-completes at the delivery address. */
-  async notifyStopAutoCompleted(input: {
-    recipientIds: string[];
-    routeId: string;
-    driverId: string;
-    driverName: string;
-    stopId: string;
-    stopName: string;
-    lat: number;
-    lng: number;
-  }): Promise<void> {
-    const recipients = [
-      ...new Set(
-        input.recipientIds.filter((id) => id && id !== input.driverId)
-      ),
-    ];
-    if (recipients.length === 0) return;
-
-    const payload = {
-      routeId: input.routeId,
-      driverId: input.driverId,
-      driverName: input.driverName,
-      stopId: input.stopId,
-      stopName: input.stopName,
-      lat: input.lat,
-      lng: input.lng,
-      deepLink: `/routes/tracking/${input.routeId}`,
-      requiresVerification: true,
-    };
-
-    const title = 'Stop delivered (GPS)';
-    const message = `${input.driverName} auto-completed ${input.stopName}. Verify location on the map.`;
-
-    await Promise.all(
-      recipients.map((recipientId) =>
-        this.notificationRepo.save(
-          new Notification({
-            recipientId,
-            type: NotificationType.STOP_AUTO_COMPLETED,
-            title,
-            message,
-            payload,
-            read: false,
-            pushSent: false,
-          })
-        )
-      )
-    );
-
-    void this.sendPushIfSupported(
-      recipients,
-      title,
-      message,
-      payload,
-      NotificationType.STOP_AUTO_COMPLETED
-    );
-  }
-
   async notifyPayrollGenerated(input: {
     recipientIds: string[];
     teamId: string;
@@ -981,6 +834,108 @@ export class NotificationService {
       message,
       payload,
       NotificationType.ROUTE_OPS_REVIEW
+    );
+  }
+
+  async notifyDriverDwelling(input: {
+    recipientIds: string[];
+    routeId: string;
+    scheduleId: string;
+    driverId: string;
+    driverName: string;
+    dwellMinutes: number;
+    lat: number;
+    lng: number;
+    city?: string | null;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      routeId: input.routeId,
+      scheduleId: input.scheduleId,
+      driverId: input.driverId,
+      driverName: input.driverName,
+      dwellMinutes: input.dwellMinutes,
+      lat: input.lat,
+      lng: input.lng,
+      city: input.city ?? null,
+      deepLink: `/routes/tracking/${input.routeId}`,
+    };
+    const title = 'Driver not moving';
+    const message = `${input.driverName} has been at the same location for ${input.dwellMinutes}+ minutes.`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.DRIVER_DWELLING,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(
+      recipients,
+      title,
+      message,
+      payload,
+      NotificationType.DRIVER_DWELLING
+    );
+  }
+
+  async notifyStopAutoCompleted(input: {
+    recipientIds: string[];
+    routeId: string;
+    scheduleId: string;
+    stopId: string;
+    stopName: string;
+    driverName: string;
+    city?: string | null;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      routeId: input.routeId,
+      scheduleId: input.scheduleId,
+      stopId: input.stopId,
+      stopName: input.stopName,
+      driverName: input.driverName,
+      city: input.city ?? null,
+      deepLink: `/routes/tracking/${input.routeId}`,
+    };
+    const title = 'Stop auto-completed';
+    const message = `${input.stopName} was auto-completed for ${input.driverName} after 2+ minutes on site.`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.STOP_AUTO_COMPLETED,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(
+      recipients,
+      title,
+      message,
+      payload,
+      NotificationType.STOP_AUTO_COMPLETED
     );
   }
 

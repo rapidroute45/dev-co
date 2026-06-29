@@ -226,7 +226,7 @@ export class UpdateRouteUseCase {
         !canVerifyInProgress
       ) {
         throw new AppError(
-          'Delivery verification applies to completed or in-progress routes with GPS proof.',
+          'Delivery verification applies to completed or in-progress routes.',
           400
         );
       }

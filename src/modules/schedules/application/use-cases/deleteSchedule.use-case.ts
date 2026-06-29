@@ -4,7 +4,6 @@ import { IScheduleRepository } from '../../domain/interfaces/schedule-repository
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { ITeamLeadScheduleAlertRepository } from '../../domain/interfaces/team-lead-schedule-alert-repository.interface';
-import { DriverLocationRepository } from '../../infrastructure/repositories/driverLocation.repository';
 import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 import { emitRouteUpdated } from '../../../chat/socket/chat.socket';
 
@@ -15,7 +14,6 @@ export class DeleteScheduleUseCase {
     private scheduleRepo: IScheduleRepository,
     private routeRepo: IRouteRepository,
     private routeStopRepo: IRouteStopRepository,
-    private driverLocationRepo: DriverLocationRepository,
     private teamLeadAlertRepo: ITeamLeadScheduleAlertRepository
   ) {}
 
@@ -33,7 +31,6 @@ export class DeleteScheduleUseCase {
     for (const route of routes) {
       if (!route.id) continue;
       await this.routeStopRepo.deleteByRouteId(route.id);
-      await this.driverLocationRepo.deleteByRouteId(route.id);
       if (route.driverId) {
         emitRouteUpdated({
           routeId: route.id,
@@ -51,6 +48,6 @@ export class DeleteScheduleUseCase {
     const deleted = await this.scheduleRepo.delete(scheduleId);
     if (!deleted) throw new AppError('Failed to delete schedule.', 500);
 
-    return { success: true, message: 'Schedule and its routes deleted successfully.' };
+    return { success: true, message: 'Schedule deleted successfully.' };
   }
 }

@@ -1,6 +1,5 @@
 import { Router } from 'express';
 import { dispatchOpsGuard } from '../../../../shared/middleware/dispatchOpsGuard';
-import { managerGuard } from '../../../../shared/middleware/managerGuard';
 import { scheduleViewerGuard } from '../../../../shared/middleware/scheduleViewerGuard';
 import { trackingViewerGuard } from '../../../../shared/middleware/trackingViewerGuard';
 import { driverGuard } from '../../../../shared/middleware/driverGuard';
@@ -16,14 +15,10 @@ import { RouteRepository } from '../../infrastructure/repositories/route.reposit
 import { RouteStopRepository } from '../../infrastructure/repositories/routeStop.repository';
 import { RouteStopEnrichmentService } from '../../application/services/routeStopEnrichment.service';
 import { AddressAccessCodeRepository } from '../../infrastructure/repositories/addressAccessCode.repository';
-import { DriverLocationRepository } from '../../infrastructure/repositories/driverLocation.repository';
-import { RouteDwellSessionRepository } from '../../infrastructure/repositories/routeDwellSession.repository';
 import { RouteValidationService } from '../../application/services/routeValidation.service';
 import { ScheduleActivationService } from '../../application/services/scheduleActivation.service';
-import { DwellDetectionService } from '../../application/services/dwellDetection.service';
 import { RouteAutoCompleteService } from '../../application/services/routeAutoComplete.service';
-import { DriverRoutePathService } from '../../application/services/driverRoutePath.service';
-import { StopProximityService } from '../../application/services/stopProximity.service';
+import { DriverLocationMonitorService } from '../../application/services/driverLocationMonitor.service';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 import { CreateRouteUseCase } from '../../application/use-cases/createRoute.use-case';
 import { GetRouteUseCase } from '../../application/use-cases/getRoute.use-case';
@@ -36,6 +31,7 @@ import { ListRoutesUseCase } from '../../application/use-cases/listRoutes.use-ca
 import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.use-case';
 import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
+import { GetRouteTrackingUseCase } from '../../application/use-cases/getRouteTracking.use-case';
 import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
 import { RouteController } from '../controllers/route.controller';
 import { TeamLeadScheduleAlertRepository } from '../../infrastructure/repositories/teamLeadScheduleAlert.repository';
@@ -48,27 +44,18 @@ const routeRepo = new RouteRepository();
 const routeStopRepo = new RouteStopRepository();
 const routeStopEnrichment = new RouteStopEnrichmentService(routeStopRepo);
 const addressCodeRepo = new AddressAccessCodeRepository();
-const driverLocationRepo = new DriverLocationRepository();
-const driverRoutePathService = new DriverRoutePathService(routeRepo, driverLocationRepo);
-const routeDwellSessionRepo = new RouteDwellSessionRepository();
 const storeRepo = new StoreRepository();
 const userRepo = new UserRepository();
 const teamRepo = new TeamRepository();
 const notificationRepo = new NotificationRepository();
 const notificationService = new NotificationService(notificationRepo);
-const dwellDetection = new DwellDetectionService(
-  routeDwellSessionRepo,
-  teamRepo,
-  userRepo,
-  notificationService,
-  routeRepo,
-  scheduleRepo
-);
-const routeAutoComplete = new RouteAutoCompleteService(
+const routeAutoComplete = new RouteAutoCompleteService(routeRepo, routeStopRepo);
+const locationMonitor = new DriverLocationMonitorService(
   routeRepo,
   routeStopRepo,
-  driverLocationRepo,
-  dwellDetection
+  userRepo,
+  routeAutoComplete,
+  notificationService
 );
 
 const routeValidation = new RouteValidationService(
@@ -87,31 +74,33 @@ const teamLeadAlertService = new TeamLeadScheduleAlertService(
   teamRepo,
   notificationService
 );
-const stopProximity = new StopProximityService(routeStopRepo, routeRepo, scheduleRepo);
 const routeDelivery = new RouteDeliveryUseCase(
   routeRepo,
   routeStopRepo,
-  driverLocationRepo,
   addressCodeRepo,
   routeStopEnrichment,
-  dwellDetection,
-  stopProximity,
   routeAutoComplete,
-  notificationService,
-  userRepo,
   scheduleRepo,
-  storeRepo
+  locationMonitor
 );
 
-const listLiveRoutes = new ListLiveRoutesUseCase(
+const getRouteTracking = new GetRouteTrackingUseCase(
   routeRepo,
   routeStopRepo,
   scheduleRepo,
   storeRepo,
   userRepo,
   teamRepo,
-  routeStopEnrichment,
-  routeDwellSessionRepo
+  routeStopEnrichment
+);
+
+const listLiveRoutes = new ListLiveRoutesUseCase(
+  routeRepo,
+  scheduleRepo,
+  storeRepo,
+  userRepo,
+  teamRepo,
+  routeStopEnrichment
 );
 
 const controller = new RouteController(
@@ -134,8 +123,7 @@ const controller = new RouteController(
     storeRepo,
     userRepo,
     teamRepo,
-    routeStopEnrichment,
-    driverRoutePathService
+    routeStopEnrichment
   ),
   new UpdateRouteUseCase(
     routeRepo,
@@ -154,7 +142,6 @@ const controller = new RouteController(
   new DeleteRouteUseCase(
     routeRepo,
     routeStopRepo,
-    driverLocationRepo,
     scheduleRepo,
     teamLeadAlertService
   ),
@@ -199,6 +186,7 @@ const controller = new RouteController(
     routeStopEnrichment
   ),
   routeDelivery,
+  getRouteTracking,
   listLiveRoutes
 );
 
@@ -215,9 +203,9 @@ router.post('/:id/assign-driver', teamLeadGuard, controller.assignDriver);
 router.post('/:id/accept', driverGuard, controller.accept);
 router.post('/:id/decline', driverGuard, controller.decline);
 router.post('/:id/start', driverGuard, controller.startRoute);
-router.post('/:id/complete', driverGuard, controller.completeRoute);
 router.post('/:id/location', driverGuard, controller.reportLocation);
 router.post('/:id/location/batch', driverGuard, controller.reportLocationBatch);
+router.post('/:id/complete', driverGuard, controller.completeRoute);
 router.post('/:routeId/stops/:stopId/complete', driverGuard, controller.completeStop);
 router.post('/:routeId/stops/:stopId/return', driverGuard, controller.returnStop);
 router.post('/:routeId/stops/:stopId/ops-complete', [...dispatchOpsGuard, requireDispatchElevation], controller.opsCompleteStop);

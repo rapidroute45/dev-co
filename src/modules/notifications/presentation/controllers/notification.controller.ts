@@ -23,7 +23,6 @@ export class NotificationController {
         recipientId: req.user.id,
         role: req.user.role,
         count: data.length,
-        dwellCount: data.filter((n) => n.type === 'driver_dwelling').length,
       });
       res.status(200).json({ success: true, data, count: data.length });
     } catch (error) {
