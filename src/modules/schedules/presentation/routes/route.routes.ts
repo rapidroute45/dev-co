@@ -19,6 +19,10 @@ import { RouteValidationService } from '../../application/services/routeValidati
 import { ScheduleActivationService } from '../../application/services/scheduleActivation.service';
 import { RouteAutoCompleteService } from '../../application/services/routeAutoComplete.service';
 import { DriverLocationMonitorService } from '../../application/services/driverLocationMonitor.service';
+import {
+  DriverLocationStaleMonitorService,
+  startDriverLocationStaleMonitor,
+} from '../../application/services/driverLocationStaleMonitor.service';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 import { CreateRouteUseCase } from '../../application/use-cases/createRoute.use-case';
 import { GetRouteUseCase } from '../../application/use-cases/getRoute.use-case';
@@ -60,6 +64,12 @@ const locationMonitor = new DriverLocationMonitorService(
   routeAutoComplete,
   notificationService
 );
+const staleLocationMonitor = new DriverLocationStaleMonitorService(
+  routeRepo,
+  scheduleRepo,
+  userRepo,
+  notificationService
+);
 
 const routeValidation = new RouteValidationService(
   scheduleRepo,
@@ -85,7 +95,8 @@ const routeDelivery = new RouteDeliveryUseCase(
   routeAutoComplete,
   scheduleRepo,
   storeRepo,
-  locationMonitor
+  locationMonitor,
+  staleLocationMonitor
 );
 
 const getRouteTracking = new GetRouteTrackingUseCase(
@@ -229,5 +240,10 @@ router.post('/:routeId/stops/:stopId/ops-return', [...dispatchOpsGuard, requireD
 router.patch('/:routeId/stops/:stopId/status', [...dispatchOpsGuard, requireDispatchElevation], controller.opsUpdateStopStatus);
 router.put('/:routeId/stops/:stopId/access-code', [...dispatchOpsGuard, requireDispatchElevation], controller.setAccessCode);
 router.delete('/:id', [...dispatchOpsGuard, requireDispatchElevation], controller.delete);
+
+/** Start interval jobs after MongoDB is connected (see server.ts). */
+export function startRouteBackgroundJobs() {
+  startDriverLocationStaleMonitor(staleLocationMonitor);
+}
 
 export default router;

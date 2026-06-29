@@ -1,11 +1,14 @@
-import { Types } from 'mongoose';
+import { Types, type HydratedDocument } from 'mongoose';
 import { AppError } from '../../../../shared/errors/app-error';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 import { UserRepository } from '../../../auth/infrastructure/repositories/user.repository';
 import { User } from '../../../auth/domain/entities/user.entity';
 import { IRouteRepository } from '../../../schedules/domain/interfaces/route-repository.interface';
 import { IScheduleRepository } from '../../../schedules/domain/interfaces/schedule-repository.interface';
-import { ConversationModel } from '../../infrastructure/models/conversation.model';
+import {
+  ConversationDocument,
+  ConversationModel,
+} from '../../infrastructure/models/conversation.model';
 import { MessageModel } from '../../infrastructure/models/message.model';
 import {
   emitDeliveryPhotoAlert,
@@ -50,6 +53,8 @@ type UserSummary = {
 function displayNameOf(u?: UserSummary | null) {
   return u?.fullName?.trim() || u?.email || 'User';
 }
+
+type ConversationEntity = HydratedDocument<ConversationDocument>;
 
 export class ChatService {
   private pushService = new PushMessagingService(new DeviceTokenRepository());
@@ -119,12 +124,9 @@ export class ChatService {
   }
 
   /** Effective membership for a conversation (groups use participants; 1:1 falls back to the pair). */
-  private participantsOf(conv: {
-    managerId?: Types.ObjectId | null;
-    driverId?: Types.ObjectId | null;
-    participants?: Types.ObjectId[] | null;
-    kind?: string;
-  }): string[] {
+  private participantsOf(
+    conv: Pick<ConversationDocument, 'managerId' | 'driverId' | 'participants' | 'kind'>
+  ): string[] {
     if (conv.kind === 'group') {
       return (conv.participants ?? []).map(String);
     }
@@ -436,7 +438,7 @@ export class ChatService {
     }
 
     const participants = [params.creatorId, ...requested];
-    let conv: InstanceType<typeof ConversationModel>;
+    let conv: ConversationEntity;
     try {
       conv = await ConversationModel.create({
         kind: 'group',
@@ -730,7 +732,7 @@ export class ChatService {
   }
 
   private async buildOutgoingMessage(params: {
-    conv: InstanceType<typeof ConversationModel>;
+    conv: ConversationEntity;
     senderId: string;
     body: string;
     type: 'text' | 'voice' | 'document';

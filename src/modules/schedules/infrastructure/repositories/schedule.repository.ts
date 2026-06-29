@@ -5,23 +5,12 @@ import {
   ScheduleListFilters,
   ScheduleUpdateData,
 } from '../../domain/interfaces/schedule-repository.interface';
-import { ScheduleModel } from '../models/schedule.model';
+import { ScheduleModel, ScheduleDocument } from '../models/schedule.model';
 import { ScheduleStatus } from '../../../../shared/constants/scheduleStatuses';
 import { parseScheduleDate } from '../../application/utils/scheduleDate';
 import { applyCityListFilter } from '../../../../shared/services/cityScope.service';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  date: Date;
-  city: string;
-  state: string;
-  storeId: { toString(): string };
-  createdBy: { toString(): string };
-  status: string;
-  notes?: string | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): Schedule {
+function mapDoc(doc: ScheduleDocument): Schedule {
   return new Schedule({
     id: doc._id.toString(),
     date: doc.date,
@@ -29,7 +18,7 @@ function mapDoc(doc: {
     state: doc.state,
     storeId: doc.storeId.toString(),
     createdBy: doc.createdBy.toString(),
-    status: doc.status as ScheduleStatus,
+    status: doc.status,
     notes: doc.notes ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
@@ -84,7 +73,7 @@ export class ScheduleRepository implements IScheduleRepository {
       ScheduleModel.countDocuments(query),
     ]);
 
-    return { items: docs.map(mapDoc), total };
+    return { items: docs.map((doc) => mapDoc(doc)), total };
   }
 
   async save(schedule: Schedule): Promise<Schedule> {

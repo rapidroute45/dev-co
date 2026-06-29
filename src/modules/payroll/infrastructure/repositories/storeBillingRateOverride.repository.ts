@@ -1,21 +1,14 @@
+import { Types } from 'mongoose';
 import {
   StoreBillingRateOverride,
   StoreBillingRateOverrideProps,
 } from '../../domain/entities/storeBillingRateOverride.entity';
-import { StoreBillingRateOverrideModel } from '../models/storeBillingRateOverride.model';
+import {
+  StoreBillingRateOverrideDocument,
+  StoreBillingRateOverrideModel,
+} from '../models/storeBillingRateOverride.model';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  storeId: { toString(): string };
-  smallRouteRate: number;
-  mediumRouteRate: number;
-  fullRouteRate: number;
-  overtimeHourlyRate?: number | null;
-  weeklyPerformanceIncentive?: number | null;
-  updatedBy?: { toString(): string } | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): StoreBillingRateOverride {
+function mapDoc(doc: StoreBillingRateOverrideDocument): StoreBillingRateOverride {
   return new StoreBillingRateOverride({
     id: doc._id.toString(),
     storeId: doc.storeId.toString(),
@@ -32,16 +25,18 @@ function mapDoc(doc: {
 
 export class StoreBillingRateOverrideRepository {
   async findByStoreId(storeId: string): Promise<StoreBillingRateOverride | null> {
-    const doc = await StoreBillingRateOverrideModel.findOne({ storeId });
+    const doc = await StoreBillingRateOverrideModel.findOne({
+      storeId: new Types.ObjectId(storeId),
+    });
     return doc ? mapDoc(doc) : null;
   }
 
   async findByStoreIds(storeIds: string[]): Promise<StoreBillingRateOverride[]> {
     if (storeIds.length === 0) return [];
     const docs = await StoreBillingRateOverrideModel.find({
-      storeId: { $in: storeIds },
+      storeId: { $in: storeIds.map((id) => new Types.ObjectId(id)) },
     });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async upsert(
@@ -55,16 +50,17 @@ export class StoreBillingRateOverrideRepository {
       | 'weeklyPerformanceIncentive'
     > & { updatedBy: string }
   ): Promise<StoreBillingRateOverride> {
+    const storeOid = new Types.ObjectId(storeId);
     const doc = await StoreBillingRateOverrideModel.findOneAndUpdate(
-      { storeId },
+      { storeId: storeOid },
       {
-        storeId,
+        storeId: storeOid,
         smallRouteRate: patch.smallRouteRate,
         mediumRouteRate: patch.mediumRouteRate,
         fullRouteRate: patch.fullRouteRate,
         overtimeHourlyRate: patch.overtimeHourlyRate ?? null,
         weeklyPerformanceIncentive: patch.weeklyPerformanceIncentive ?? null,
-        updatedBy: patch.updatedBy,
+        updatedBy: new Types.ObjectId(patch.updatedBy),
       },
       { upsert: true, returnDocument: 'after' }
     );
@@ -73,7 +69,9 @@ export class StoreBillingRateOverrideRepository {
   }
 
   async deleteByStoreId(storeId: string): Promise<boolean> {
-    const result = await StoreBillingRateOverrideModel.deleteOne({ storeId });
+    const result = await StoreBillingRateOverrideModel.deleteOne({
+      storeId: new Types.ObjectId(storeId),
+    });
     return result.deletedCount > 0;
   }
 }

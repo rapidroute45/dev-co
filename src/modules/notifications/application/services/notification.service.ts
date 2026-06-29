@@ -719,6 +719,35 @@ export class NotificationService {
     );
   }
 
+  async notifyDocumentUploadRequested(input: {
+    recipientId: string;
+    requirementId: string;
+    requirementTitle: string;
+  }): Promise<void> {
+    const payload = { requirementId: input.requirementId, deepLink: '/documents' };
+    const title = 'Document upload requested';
+    const message = `Please upload: ${input.requirementTitle}`;
+
+    await this.notificationRepo.save(
+      new Notification({
+        recipientId: input.recipientId,
+        type: NotificationType.DOCUMENT_REQUIRED,
+        title,
+        message,
+        payload,
+        read: false,
+        pushSent: false,
+      })
+    );
+    void this.sendPushIfSupported(
+      [input.recipientId],
+      title,
+      message,
+      payload,
+      NotificationType.DOCUMENT_REQUIRED
+    );
+  }
+
   async notifyDocumentRequiredBatch(input: {
     recipientIds: string[];
     requirementId: string;
@@ -936,6 +965,155 @@ export class NotificationService {
       message,
       payload,
       NotificationType.STOP_AUTO_COMPLETED
+    );
+  }
+
+  async notifyStopCompleted(input: {
+    recipientIds: string[];
+    routeId: string;
+    scheduleId: string;
+    stopId: string;
+    stopName: string;
+    driverName: string;
+    city?: string | null;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      routeId: input.routeId,
+      scheduleId: input.scheduleId,
+      stopId: input.stopId,
+      stopName: input.stopName,
+      driverName: input.driverName,
+      city: input.city ?? null,
+      deepLink: `/routes/tracking/${input.routeId}`,
+    };
+    const title = 'Stop completed';
+    const message = `${input.driverName} completed ${input.stopName}.`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.STOP_COMPLETED,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(
+      recipients,
+      title,
+      message,
+      payload,
+      NotificationType.STOP_COMPLETED
+    );
+  }
+
+  async notifyDriverOffRoute(input: {
+    recipientIds: string[];
+    routeId: string;
+    scheduleId: string;
+    driverId: string;
+    driverName: string;
+    lat: number;
+    lng: number;
+    city?: string | null;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      routeId: input.routeId,
+      scheduleId: input.scheduleId,
+      driverId: input.driverId,
+      driverName: input.driverName,
+      lat: input.lat,
+      lng: input.lng,
+      city: input.city ?? null,
+      deepLink: `/routes/tracking/${input.routeId}`,
+    };
+    const title = 'Driver off route';
+    const message = `${input.driverName} is off the planned route. Check live tracking.`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.DRIVER_OFF_ROUTE,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(
+      recipients,
+      title,
+      message,
+      payload,
+      NotificationType.DRIVER_OFF_ROUTE
+    );
+  }
+
+  async notifyDriverLocationStale(input: {
+    recipientIds: string[];
+    routeId: string;
+    scheduleId: string;
+    driverId: string;
+    driverName: string;
+    minutes: number;
+    city?: string | null;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      routeId: input.routeId,
+      scheduleId: input.scheduleId,
+      driverId: input.driverId,
+      driverName: input.driverName,
+      minutes: input.minutes,
+      city: input.city ?? null,
+      deepLink: `/routes/tracking/${input.routeId}`,
+    };
+    const title = 'Driver location stale';
+    const message = `${input.driverName} has not sent GPS for ${input.minutes}+ minutes. Check live tracking.`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.DRIVER_LOCATION_STALE,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(
+      recipients,
+      title,
+      message,
+      payload,
+      NotificationType.DRIVER_LOCATION_STALE
     );
   }
 

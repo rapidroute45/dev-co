@@ -1,19 +1,14 @@
+import { Types } from 'mongoose';
 import {
   PayrollRateOverride,
   PayrollRateOverrideProps,
 } from '../../domain/entities/payrollRateOverride.entity';
-import { PayrollRateOverrideModel } from '../models/payrollRateOverride.model';
+import {
+  PayrollRateOverrideDocument,
+  PayrollRateOverrideModel,
+} from '../models/payrollRateOverride.model';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  storeId: { toString(): string };
-  smallRouteRate: number;
-  mediumRouteRate: number;
-  fullRouteRate: number;
-  updatedBy?: { toString(): string } | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): PayrollRateOverride {
+function mapDoc(doc: PayrollRateOverrideDocument): PayrollRateOverride {
   return new PayrollRateOverride({
     id: doc._id.toString(),
     storeId: doc.storeId.toString(),
@@ -28,16 +23,18 @@ function mapDoc(doc: {
 
 export class PayrollRateOverrideRepository {
   async findByStoreId(storeId: string): Promise<PayrollRateOverride | null> {
-    const doc = await PayrollRateOverrideModel.findOne({ storeId });
+    const doc = await PayrollRateOverrideModel.findOne({
+      storeId: new Types.ObjectId(storeId),
+    });
     return doc ? mapDoc(doc) : null;
   }
 
   async findByStoreIds(storeIds: string[]): Promise<PayrollRateOverride[]> {
     if (storeIds.length === 0) return [];
     const docs = await PayrollRateOverrideModel.find({
-      storeId: { $in: storeIds },
+      storeId: { $in: storeIds.map((id) => new Types.ObjectId(id)) },
     });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async upsert(
@@ -47,14 +44,15 @@ export class PayrollRateOverrideRepository {
       'smallRouteRate' | 'mediumRouteRate' | 'fullRouteRate'
     > & { updatedBy: string }
   ): Promise<PayrollRateOverride> {
+    const storeOid = new Types.ObjectId(storeId);
     const doc = await PayrollRateOverrideModel.findOneAndUpdate(
-      { storeId },
+      { storeId: storeOid },
       {
-        storeId,
+        storeId: storeOid,
         smallRouteRate: patch.smallRouteRate,
         mediumRouteRate: patch.mediumRouteRate,
         fullRouteRate: patch.fullRouteRate,
-        updatedBy: patch.updatedBy,
+        updatedBy: new Types.ObjectId(patch.updatedBy),
       },
       { upsert: true, returnDocument: 'after' }
     );
@@ -63,7 +61,9 @@ export class PayrollRateOverrideRepository {
   }
 
   async deleteByStoreId(storeId: string): Promise<boolean> {
-    const result = await PayrollRateOverrideModel.deleteOne({ storeId });
+    const result = await PayrollRateOverrideModel.deleteOne({
+      storeId: new Types.ObjectId(storeId),
+    });
     return result.deletedCount > 0;
   }
 }

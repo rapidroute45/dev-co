@@ -1,9 +1,16 @@
+import { Types } from 'mongoose';
 import { AppError } from '../../../../shared/errors/app-error';
 import { DocumentSubmissionStatus } from '../../../../shared/constants/documentStatuses';
-import { UserRole, UserStatus } from '../../../../shared/constants/roles';
+import { UserRole } from '../../../../shared/constants/roles';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
-import { DocumentRequirementModel } from '../../infrastructure/models/documentRequirement.model';
-import { DriverDocumentSubmissionModel } from '../../infrastructure/models/driverDocumentSubmission.model';
+import {
+  DocumentRequirementDocument,
+  DocumentRequirementModel,
+} from '../../infrastructure/models/documentRequirement.model';
+import {
+  DriverDocumentSubmissionDocument,
+  DriverDocumentSubmissionModel,
+} from '../../infrastructure/models/driverDocumentSubmission.model';
 import { DriverVehicleProfileModel } from '../../infrastructure/models/driverVehicleProfile.model';
 import { NotificationService } from '../../../notifications/application/services/notification.service';
 import { INotificationRepository } from '../../../notifications/domain/interfaces/notification-repository.interface';
@@ -83,33 +90,6 @@ function formatExpiry(date: Date | null | undefined): string | null {
   return date.toISOString().slice(0, 10);
 }
 
-type RequirementDoc = {
-  _id: { toString(): string };
-  key: string;
-  title: string;
-  description?: string | null;
-  category: string;
-  requiresExpiry: boolean;
-  requiresReferenceNumber: boolean;
-  referenceLabel?: string | null;
-  requiresFile: boolean;
-  active: boolean;
-};
-
-type SubmissionDoc = {
-  _id: { toString(): string };
-  driverId: { toString(): string };
-  requirementId: { toString(): string };
-  status: string;
-  referenceNumber?: string | null;
-  expiryDate?: Date | null;
-  fileUrl?: string | null;
-  fileMimeType?: string | null;
-  rejectionReason?: string | null;
-  uploadedAt?: Date | null;
-  verifiedAt?: Date | null;
-};
-
 export class DriverDocumentsService {
   constructor(
     private userRepo: IUserRepository,
@@ -129,8 +109,8 @@ export class DriverDocumentsService {
   }
 
   private computeStatus(
-    submission: SubmissionDoc | null,
-    requirement: RequirementDoc,
+    submission: DriverDocumentSubmissionDocument | null,
+    requirement: DocumentRequirementDocument,
     today: Date
   ): DocumentSubmissionStatus {
     if (!submission?.fileUrl && requirement.requiresFile) {
@@ -159,7 +139,7 @@ export class DriverDocumentsService {
     return DocumentSubmissionStatus.MISSING;
   }
 
-  private mapRequirement(req: RequirementDoc) {
+  private mapRequirement(req: DocumentRequirementDocument) {
     return {
       id: req._id.toString(),
       key: req.key,
@@ -175,8 +155,8 @@ export class DriverDocumentsService {
   }
 
   private mapSubmission(
-    submission: SubmissionDoc | null,
-    requirement: RequirementDoc,
+    submission: DriverDocumentSubmissionDocument | null,
+    requirement: DocumentRequirementDocument,
     today: Date
   ) {
     const status = this.computeStatus(submission, requirement, today);
@@ -206,7 +186,7 @@ export class DriverDocumentsService {
   async listRequirements() {
     await this.ensureDefaultRequirements();
     const docs = await DocumentRequirementModel.find({ active: true }).sort({ title: 1 });
-    return docs.map((d) => this.mapRequirement(d as RequirementDoc));
+    return docs.map((d) => this.mapRequirement(d));
   }
 
   async getMyDocuments(driverId: string) {
@@ -217,10 +197,10 @@ export class DriverDocumentsService {
     });
     const submissions = await DriverDocumentSubmissionModel.find({ driverId });
     const byReq = new Map(
-      submissions.map((s) => [(s as SubmissionDoc).requirementId.toString(), s as SubmissionDoc])
+      submissions.map((s) => [s.requirementId.toString(), s])
     );
 
-    const documents = (requirements as RequirementDoc[]).map((req) => ({
+    const documents = requirements.map((req) => ({
       requirement: this.mapRequirement(req),
       submission: this.mapSubmission(byReq.get(req._id.toString()) ?? null, req, today),
     }));
@@ -293,8 +273,8 @@ export class DriverDocumentsService {
 
     const today = startOfTodayUtc();
     return {
-      requirement: this.mapRequirement(requirement as RequirementDoc),
-      submission: this.mapSubmission(doc as SubmissionDoc, requirement as RequirementDoc, today),
+      requirement: this.mapRequirement(requirement),
+      submission: this.mapSubmission(doc, requirement, today),
     };
   }
 
@@ -335,12 +315,9 @@ export class DriverDocumentsService {
         const driverId = driver.id!;
         const submissions = await DriverDocumentSubmissionModel.find({ driverId });
         const byReq = new Map(
-          submissions.map((s) => [
-            (s as SubmissionDoc).requirementId.toString(),
-            s as SubmissionDoc,
-          ])
+          submissions.map((s) => [s.requirementId.toString(), s])
         );
-        const statuses = (requirements as RequirementDoc[]).map((req) =>
+        const statuses = requirements.map((req) =>
           this.computeStatus(byReq.get(req._id.toString()) ?? null, req, today)
         );
         const stats = this.buildStats(statuses);
@@ -393,7 +370,7 @@ export class DriverDocumentsService {
     if (!doc?.fileUrl) throw new AppError('No document uploaded to verify.', 400);
 
     doc.status = DocumentSubmissionStatus.VERIFIED;
-    doc.verifiedBy = managerId as unknown as typeof doc.verifiedBy;
+    doc.verifiedBy = new Types.ObjectId(managerId);
     doc.verifiedAt = new Date();
     doc.rejectionReason = null;
     await doc.save();
@@ -404,6 +381,42 @@ export class DriverDocumentsService {
     });
 
     return this.getDriverDocumentsForManager(driverId);
+  }
+
+  async requestDocumentUpload(driverId: string, requirementId: string) {
+    const user = await this.userRepo.findById(driverId);
+    if (!user || !user.role || !DRIVER_ROLES.includes(user.role)) {
+      throw new AppError('Driver not found.', 404);
+    }
+
+    const requirement = await DocumentRequirementModel.findById(requirementId);
+    if (!requirement || !requirement.active) {
+      throw new AppError('Document requirement not found.', 404);
+    }
+
+    const today = startOfTodayUtc();
+    const submission = await DriverDocumentSubmissionModel.findOne({ driverId, requirementId });
+    const status = this.computeStatus(submission, requirement, today);
+
+    const requestable = [
+      DocumentSubmissionStatus.MISSING,
+      DocumentSubmissionStatus.REJECTED,
+      DocumentSubmissionStatus.EXPIRED,
+    ];
+    if (!requestable.includes(status)) {
+      throw new AppError(
+        'Upload can only be requested for missing, rejected, or expired documents.',
+        400
+      );
+    }
+
+    await this.notificationService.notifyDocumentUploadRequested({
+      recipientId: driverId,
+      requirementId,
+      requirementTitle: requirement.title,
+    });
+
+    return { requested: true, requirementTitle: requirement.title };
   }
 
   async rejectDocument(
@@ -451,7 +464,7 @@ export class DriverDocumentsService {
     const existing = await DocumentRequirementModel.findOne({ key });
     if (existing) throw new AppError('A requirement with a similar key already exists.', 400);
 
-    const created = (await DocumentRequirementModel.create({
+    const created = await DocumentRequirementModel.create({
       key: `${key}_${Date.now().toString(36)}`,
       title: body.title.trim(),
       description: body.description?.trim() || null,
@@ -462,7 +475,7 @@ export class DriverDocumentsService {
       requiresFile: body.requiresFile ?? true,
       active: true,
       createdBy: managerId,
-    })) as RequirementDoc;
+    });
 
     const drivers = await this.userRepo.findActiveDrivers();
     await this.notificationService.notifyDocumentRequiredBatch({
@@ -521,7 +534,7 @@ export class DriverDocumentsService {
       requirementTitle: title,
     });
 
-    return this.mapRequirement(updated as RequirementDoc);
+    return this.mapRequirement(updated);
   }
 
   async deleteRequirement(requirementId: string) {

@@ -1,3 +1,5 @@
+import { filterGpsPathOutliers } from './stopDestinationCoords';
+
 export const MAX_STORED_ROUTE_PATH_POINTS = 5000;
 export const MAX_TRAIL_EMIT_POINTS = 60;
 
@@ -27,7 +29,9 @@ export function mergeRoutePathPoints(
     });
   }
 
-  return [...byKey.values()]
-    .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
-    .slice(-maxPoints);
+  return filterGpsPathOutliers(
+    [...byKey.values()]
+      .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime())
+      .slice(-maxPoints)
+  );
 }

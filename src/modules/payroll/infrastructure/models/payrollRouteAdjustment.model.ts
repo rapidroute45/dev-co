@@ -1,6 +1,20 @@
 import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
+export interface PayrollRouteAdjustmentDocument {
+  _id: Types.ObjectId;
+  routeId: Types.ObjectId;
+  driverId: Types.ObjectId;
+  teamId: Types.ObjectId;
+  originalAmount: number;
+  adjustedAmount: number;
+  reason?: string | null;
+  adjustedBy: Types.ObjectId;
+  adjustedAt: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const PayrollRouteAdjustmentSchema = new Schema(
   {
     routeId: { type: Types.ObjectId, ref: 'Route', required: true, unique: true, index: true },
@@ -15,7 +29,7 @@ const PayrollRouteAdjustmentSchema = new Schema(
   { timestamps: true }
 );
 
-export const PayrollRouteAdjustmentModel = createScopedModel(
+export const PayrollRouteAdjustmentModel = createScopedModel<PayrollRouteAdjustmentDocument>(
   'PayrollRouteAdjustment',
   PayrollRouteAdjustmentSchema
 );

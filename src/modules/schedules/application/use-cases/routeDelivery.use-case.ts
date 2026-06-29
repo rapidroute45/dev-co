@@ -11,6 +11,7 @@ import { AddressAccessCodeRepository } from '../../infrastructure/repositories/a
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 import { RouteAutoCompleteService } from '../services/routeAutoComplete.service';
 import { DriverLocationMonitorService } from '../services/driverLocationMonitor.service';
+import { DriverLocationStaleMonitorService } from '../services/driverLocationStaleMonitor.service';
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { IStoreRepository } from '../../../stores/domain/interfaces/store-repository.interface';
 import { geocodeMissingRouteStops } from '../services/routeStopGeo.service';
@@ -21,6 +22,7 @@ import {
   MAX_TRAIL_EMIT_POINTS,
   mergeRoutePathPoints,
 } from '../utils/routePath';
+import { filterGpsPathOutliers, filterIncomingGpsBatch } from '../utils/stopDestinationCoords';
 
 export class RouteDeliveryUseCase {
   constructor(
@@ -31,7 +33,8 @@ export class RouteDeliveryUseCase {
     private routeAutoComplete: RouteAutoCompleteService,
     private scheduleRepo: IScheduleRepository,
     private storeRepo: IStoreRepository,
-    private locationMonitor: DriverLocationMonitorService
+    private locationMonitor: DriverLocationMonitorService,
+    private staleMonitor: DriverLocationStaleMonitorService
   ) {}
 
   private async assertDriverRoute(routeId: string, driverId: string) {
@@ -105,6 +108,20 @@ export class RouteDeliveryUseCase {
       action: 'updated',
       driverIds: [driverId],
     });
+
+    let scheduleCity: string | null = null;
+    try {
+      const schedule = await this.scheduleRepo.findById(route.scheduleId);
+      scheduleCity = schedule?.city ?? null;
+    } catch (error) {
+      console.warn('[complete-stop] schedule lookup failed', { routeId, error });
+    }
+
+    await this.locationMonitor.notifyManualStopCompleted(
+      route,
+      { id: stopId, name: stop.name },
+      scheduleCity
+    );
 
     const completedRoute = await this.tryAutoCompleteRoute(routeId, driverId);
 
@@ -413,7 +430,7 @@ export class RouteDeliveryUseCase {
     routeId: string,
     driverId: string,
     points: Array<{ lat: number; lng: number; rawLat?: number; rawLng?: number; recordedAt?: string }>,
-    meta?: { plannedStopId?: string; progressIndex?: number }
+    meta?: { plannedStopId?: string; progressIndex?: number; offRoute?: boolean }
   ) {
     const route = await this.assertDriverRoute(routeId, driverId);
     if (route.status !== RouteStatus.IN_PROGRESS) {
@@ -442,9 +459,21 @@ export class RouteDeliveryUseCase {
       throw new AppError('No valid location points in batch.', 400);
     }
 
-    const latest = ordered[ordered.length - 1]!;
+    const anchor =
+      route.driverLat != null &&
+      route.driverLng != null &&
+      Number.isFinite(route.driverLat) &&
+      Number.isFinite(route.driverLng)
+        ? { lat: route.driverLat, lng: route.driverLng }
+        : null;
+    const plausible = filterIncomingGpsBatch(ordered, anchor);
+    if (plausible.length === 0) {
+      throw new AppError('No plausible location points in batch.', 400);
+    }
+
+    const latest = plausible[plausible.length - 1]!;
     const ingestedAt = new Date();
-    const incomingPath = ordered.map((point) => ({
+    const incomingPath = plausible.map((point) => ({
       lat: point.lat,
       lng: point.lng,
       recordedAt: point.recordedAt,
@@ -470,6 +499,12 @@ export class RouteDeliveryUseCase {
     const updatedRoute =
       (await this.routeRepo.update(routeId, routePatch)) ?? route;
 
+    try {
+      await this.staleMonitor.clearStaleAlert(routeId);
+    } catch (error) {
+      console.warn('[location-batch] stale alert clear failed', { routeId, error });
+    }
+
     let scheduleCity: string | null = null;
     try {
       const schedule = await this.scheduleRepo.findById(route.scheduleId);
@@ -481,14 +516,15 @@ export class RouteDeliveryUseCase {
     try {
       await this.locationMonitor.processLocationBatch(
         updatedRoute,
-        ordered.map((point) => ({
+        plausible.map((point) => ({
           lat: point.lat,
           lng: point.lng,
           rawLat: point.rawLat,
           rawLng: point.rawLng,
           recordedAt: point.recordedAt,
         })),
-        scheduleCity
+        scheduleCity,
+        { offRoute: Boolean(meta?.offRoute) }
       );
     } catch (error) {
       console.warn('[location-batch] monitor failed — location still saved', {
@@ -501,7 +537,7 @@ export class RouteDeliveryUseCase {
     const routeForEmit = (await this.routeRepo.findById(routeId)) ?? updatedRoute;
 
     try {
-      const trailSlice = ordered.slice(-MAX_TRAIL_EMIT_POINTS);
+      const trailSlice = plausible.slice(-MAX_TRAIL_EMIT_POINTS);
       emitDriverCurrentLocation({
         routeId,
         scheduleId: route.scheduleId,
@@ -529,12 +565,12 @@ export class RouteDeliveryUseCase {
     console.log('[location-batch]', {
       routeId,
       driverId,
-      accepted: ordered.length,
+      accepted: plausible.length,
       received: points.length,
     });
 
     return {
-      accepted: ordered.length,
+      accepted: plausible.length,
       received: points.length,
       lat: latest.lat,
       lng: latest.lng,

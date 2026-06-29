@@ -5,6 +5,69 @@ import {
   DEFAULT_ROUTE_CATEGORY,
   RouteCategory,
 } from '../../../../shared/constants/routeCategories';
+import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
+import { OpsVerificationStatus } from '../../../../shared/constants/opsVerification';
+
+export interface RoutePathPoint {
+  lat: number;
+  lng: number;
+  recordedAt: Date;
+}
+
+export interface RouteSegmentPoint {
+  lat: number;
+  lng: number;
+}
+
+export interface RouteDocument {
+  _id: Types.ObjectId;
+  scheduleId: Types.ObjectId;
+  scheduleDate: Date;
+  teamId: Types.ObjectId;
+  driverId?: Types.ObjectId | null;
+  routeName?: string | null;
+  routeCategory?: RouteCategory;
+  location?: string | null;
+  vehicleType?: string | null;
+  mileage?: number | null;
+  stops?: number | null;
+  arrivalTime: string;
+  departureTime: string;
+  arrivalMinutes: number;
+  departureMinutes: number;
+  status: RouteStatus;
+  assignedBy: Types.ObjectId;
+  notes?: string | null;
+  totalMiles?: number | null;
+  driverLat?: number | null;
+  driverLng?: number | null;
+  driverLocationAt?: Date | null;
+  driverLocationIngestedAt?: Date | null;
+  driverLocationBackgroundSharing?: boolean;
+  startedAt?: Date | null;
+  completedAt?: Date | null;
+  deliveryVerification?: DeliveryVerification | null;
+  overtimeHours?: number | null;
+  opsVerificationStatus?: OpsVerificationStatus | null;
+  teamVerifiedAt?: Date | null;
+  teamVerifiedBy?: Types.ObjectId | null;
+  managerVerifiedAt?: Date | null;
+  managerVerifiedBy?: Types.ObjectId | null;
+  driverRoutePath?: RoutePathPoint[];
+  driverRouteSegmentStopId?: string | null;
+  driverRouteProgressIndex?: number | null;
+  driverActiveSegmentPolyline?: RouteSegmentPoint[];
+  driverSegmentVersion?: number | null;
+  driverSegmentReroutedAt?: Date | null;
+  driverDwellAnchorLat?: number | null;
+  driverDwellAnchorLng?: number | null;
+  driverDwellStartedAt?: Date | null;
+  driverDwellAlertSentAt?: Date | null;
+  driverOffRouteAlertSentAt?: Date | null;
+  driverLocationStaleAlertSentAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
 
 const RouteSchema = new Schema(
   {
@@ -85,6 +148,8 @@ const RouteSchema = new Schema(
     driverDwellAnchorLng: { type: Number, default: null },
     driverDwellStartedAt: { type: Date, default: null },
     driverDwellAlertSentAt: { type: Date, default: null },
+    driverOffRouteAlertSentAt: { type: Date, default: null },
+    driverLocationStaleAlertSentAt: { type: Date, default: null },
   },
   { timestamps: true }
 );
@@ -92,4 +157,4 @@ const RouteSchema = new Schema(
 RouteSchema.index({ driverId: 1, scheduleDate: 1, arrivalMinutes: 1, departureMinutes: 1 });
 RouteSchema.index({ teamId: 1, scheduleDate: 1 });
 
-export const RouteModel = createScopedModel('Route', RouteSchema);
+export const RouteModel = createScopedModel<RouteDocument>('Route', RouteSchema);

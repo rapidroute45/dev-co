@@ -1,14 +1,11 @@
+import { Types } from 'mongoose';
 import { InvoiceBillTo } from '../../domain/entities/invoiceBillTo.entity';
-import { InvoiceBillToModel } from '../models/invoiceBillTo.model';
+import {
+  InvoiceBillToDocument,
+  InvoiceBillToModel,
+} from '../models/invoiceBillTo.model';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  name: string;
-  address: string;
-  updatedBy?: { toString(): string } | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): InvoiceBillTo {
+function mapDoc(doc: InvoiceBillToDocument): InvoiceBillTo {
   return new InvoiceBillTo({
     id: doc._id.toString(),
     name: doc.name,
@@ -22,7 +19,7 @@ function mapDoc(doc: {
 export class InvoiceBillToRepository {
   async findAll(): Promise<InvoiceBillTo[]> {
     const docs = await InvoiceBillToModel.find().sort({ name: 1 });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async findByName(name: string): Promise<InvoiceBillTo | null> {
@@ -46,7 +43,7 @@ export class InvoiceBillToRepository {
 
     const doc = await InvoiceBillToModel.findOneAndUpdate(
       { name },
-      { name, address, updatedBy: input.updatedBy },
+      { name, address, updatedBy: new Types.ObjectId(input.updatedBy) },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
     if (!doc) throw new Error('Failed to save bill-to');

@@ -1,20 +1,14 @@
+import { Types } from 'mongoose';
 import {
   StoreBillingSettings,
   StoreBillingSettingsProps,
 } from '../../domain/entities/storeBillingSettings.entity';
-import { StoreBillingSettingsModel } from '../models/storeBillingSettings.model';
+import {
+  StoreBillingSettingsDocument,
+  StoreBillingSettingsModel,
+} from '../models/storeBillingSettings.model';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  smallRouteRate: number;
-  mediumRouteRate: number;
-  fullRouteRate: number;
-  overtimeHourlyRate: number;
-  weeklyPerformanceIncentive: number;
-  updatedBy?: { toString(): string } | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): StoreBillingSettings {
+function mapDoc(doc: StoreBillingSettingsDocument): StoreBillingSettings {
   return new StoreBillingSettings({
     id: doc._id.toString(),
     smallRouteRate: doc.smallRouteRate,
@@ -65,7 +59,7 @@ export class StoreBillingSettingsRepository {
         fullRouteRate: patch.fullRouteRate,
         overtimeHourlyRate: patch.overtimeHourlyRate,
         weeklyPerformanceIncentive: patch.weeklyPerformanceIncentive,
-        updatedBy: patch.updatedBy,
+        updatedBy: new Types.ObjectId(patch.updatedBy),
       },
       { returnDocument: 'after' }
     );

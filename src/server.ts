@@ -4,9 +4,18 @@ import { ENV } from './config/env';
 import { connectDB } from './config/db';
 import { logFirebaseStartupStatus } from './shared/firebase/firebaseAdmin';
 import { chatService, initChatSocket } from './modules/chat';
+import { startRouteBackgroundJobs } from './modules/schedules';
+import {
+  validateProductionAppSettings,
+  validateProductionEnv,
+} from './config/validateProductionEnv';
+import { AppSettingsRepository } from './modules/auth/infrastructure/repositories/appSettings.repository';
 
 const startServer = async () => {
+  validateProductionEnv();
   await connectDB();
+  await validateProductionAppSettings(() => new AppSettingsRepository().findExisting());
+  startRouteBackgroundJobs();
   logFirebaseStartupStatus();
 
   const httpServer = http.createServer(app);

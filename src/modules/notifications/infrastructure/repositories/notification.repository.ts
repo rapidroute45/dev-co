@@ -4,7 +4,10 @@ import {
   NotificationType,
 } from '../../domain/entities/notification.entity';
 import { INotificationRepository } from '../../domain/interfaces/notification-repository.interface';
-import { NotificationModel } from '../models/notification.model';
+import {
+  NotificationDocument,
+  NotificationModel,
+} from '../models/notification.model';
 
 function toRecipientObjectId(recipientId: string): mongoose.Types.ObjectId | null {
   if (!mongoose.Types.ObjectId.isValid(recipientId)) return null;
@@ -18,25 +21,14 @@ function recipientQuery(recipientId: string) {
   return { $or: [{ recipientId: oid }, { recipientId: recipientId }] };
 }
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  recipientId: { toString(): string };
-  type: string;
-  title: string;
-  message: string;
-  payload?: Record<string, unknown>;
-  read: boolean;
-  pushSent?: boolean;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): Notification {
+function mapDoc(doc: NotificationDocument): Notification {
   return new Notification({
     id: doc._id.toString(),
     recipientId: doc.recipientId.toString(),
-    type: doc.type as NotificationType,
+    type: doc.type,
     title: doc.title,
     message: doc.message,
-    payload: (doc.payload as Record<string, unknown>) ?? {},
+    payload: doc.payload ?? {},
     read: doc.read,
     pushSent: doc.pushSent,
     createdAt: doc.createdAt,
@@ -64,7 +56,7 @@ export class NotificationRepository implements INotificationRepository {
     const docs = await NotificationModel.find(recipientQuery(recipientId))
       .sort({ createdAt: -1 })
       .limit(limit);
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async markRead(id: string, recipientId: string): Promise<Notification | null> {

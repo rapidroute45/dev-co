@@ -1,5 +1,15 @@
-import { Schema } from 'mongoose';
+import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
+
+export interface AddressAccessCodeDocument {
+  _id: Types.ObjectId;
+  normalizedAddress: string;
+  accessCode: string;
+  sampleName?: string | null;
+  lastUsedAt?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
 
 const AddressAccessCodeSchema = new Schema(
   {
@@ -11,4 +21,7 @@ const AddressAccessCodeSchema = new Schema(
   { timestamps: true }
 );
 
-export const AddressAccessCodeModel = createScopedModel('AddressAccessCode', AddressAccessCodeSchema);
+export const AddressAccessCodeModel = createScopedModel<AddressAccessCodeDocument>(
+  'AddressAccessCode',
+  AddressAccessCodeSchema
+);

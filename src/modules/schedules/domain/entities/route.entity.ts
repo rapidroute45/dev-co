@@ -50,6 +50,8 @@ export interface RouteProps {
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;
   driverDwellAlertSentAt?: Date | null;
+  driverOffRouteAlertSentAt?: Date | null;
+  driverLocationStaleAlertSentAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }
@@ -200,6 +202,12 @@ export class Route {
   }
   get driverDwellAlertSentAt() {
     return this.props.driverDwellAlertSentAt ?? null;
+  }
+  get driverOffRouteAlertSentAt() {
+    return this.props.driverOffRouteAlertSentAt ?? null;
+  }
+  get driverLocationStaleAlertSentAt() {
+    return this.props.driverLocationStaleAlertSentAt ?? null;
   }
   get createdAt() {
     return this.props.createdAt;

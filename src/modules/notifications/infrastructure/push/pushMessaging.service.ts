@@ -47,6 +47,9 @@ function androidChannelForType(type: NotificationType): string {
     case NotificationType.DISPATCH_TEAM_UPDATED:
     case NotificationType.DRIVER_DWELLING:
     case NotificationType.STOP_AUTO_COMPLETED:
+    case NotificationType.STOP_COMPLETED:
+    case NotificationType.DRIVER_OFF_ROUTE:
+    case NotificationType.DRIVER_LOCATION_STALE:
       return ANDROID_CHANNEL_OPS;
     case NotificationType.PAYROLL_GENERATED:
     case NotificationType.PAYROLL_SENT:

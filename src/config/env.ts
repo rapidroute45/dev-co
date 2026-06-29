@@ -42,6 +42,9 @@ export const ENV = {
   FIREBASE_SERVICE_ACCOUNT_PATH: process.env.FIREBASE_SERVICE_ACCOUNT_PATH?.trim() || '',
   /** Origin for web push click URLs, e.g. https://app.example.com */
   WEB_APP_ORIGIN: process.env.WEB_APP_ORIGIN?.trim().replace(/\/$/, '') || '',
+  /** Required in production — validated by validateProductionEnv */
+  OPS_DISPATCH_ELEVATION_PIN: process.env.OPS_DISPATCH_ELEVATION_PIN?.trim() || '',
+  OPS_PAYROLL_ELEVATION_PIN: process.env.OPS_PAYROLL_ELEVATION_PIN?.trim() || '',
 };
 
 /** Extract database name from a MongoDB URI for logging (never log credentials). */

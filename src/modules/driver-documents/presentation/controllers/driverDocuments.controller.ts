@@ -118,6 +118,22 @@ export class DriverDocumentsController {
     }
   };
 
+  requestDocumentUpload = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.service.requestDocumentUpload(
+        String(req.params.driverId),
+        String(req.params.requirementId)
+      );
+      res.status(200).json({
+        success: true,
+        message: 'Driver was notified to upload this document.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   rejectDocument = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));

@@ -45,6 +45,8 @@ export interface RouteUpdateData {
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;
   driverDwellAlertSentAt?: Date | null;
+  driverOffRouteAlertSentAt?: Date | null;
+  driverLocationStaleAlertSentAt?: Date | null;
 }
 
 export interface RouteListFilters {
@@ -60,6 +62,7 @@ export interface IRouteRepository {
   findById(id: string): Promise<Route | null>;
   findMany(filters: RouteListFilters): Promise<{ items: Route[]; total: number }>;
   findManyByScheduleId(scheduleId: string): Promise<Route[]>;
+  findInProgressWithDriver(): Promise<Route[]>;
   findPendingOffersForDriver(driverId: string): Promise<Route[]>;
   countByScheduleId(scheduleId: string): Promise<number>;
   countPendingRoutesByScheduleId(scheduleId: string): Promise<number>;

@@ -1,6 +1,17 @@
 import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
+export interface PayrollRateOverrideDocument {
+  _id: Types.ObjectId;
+  storeId: Types.ObjectId;
+  smallRouteRate: number;
+  mediumRouteRate: number;
+  fullRouteRate: number;
+  updatedBy?: Types.ObjectId | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const PayrollRateOverrideSchema = new Schema(
   {
     storeId: {
@@ -18,4 +29,7 @@ const PayrollRateOverrideSchema = new Schema(
   { timestamps: true }
 );
 
-export const PayrollRateOverrideModel = createScopedModel('PayrollRateOverride', PayrollRateOverrideSchema);
+export const PayrollRateOverrideModel = createScopedModel<PayrollRateOverrideDocument>(
+  'PayrollRateOverride',
+  PayrollRateOverrideSchema
+);
