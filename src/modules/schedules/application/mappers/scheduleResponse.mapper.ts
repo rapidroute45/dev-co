@@ -102,6 +102,8 @@ export function mapRouteToResponse(
       lng: point.lng,
       recordedAt: point.recordedAt,
     })),
+    driverRouteSegmentStopId: route.driverRouteSegmentStopId ?? null,
+    driverRouteProgressIndex: route.driverRouteProgressIndex ?? null,
     totalMiles: extras?.totalMiles ?? route.totalMiles ?? null,
     arrivalTime: route.arrivalTime,
     departureTime: route.departureTime,

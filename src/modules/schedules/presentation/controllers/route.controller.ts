@@ -13,6 +13,7 @@ import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMy
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 import { GetRouteTrackingUseCase } from '../../application/use-cases/getRouteTracking.use-case';
+import { GetRoutePlannedSegmentUseCase } from '../../application/use-cases/getRoutePlannedSegment.use-case';
 import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
 import { sanitizeRoutePayloadForRole } from '../../../../shared/utils/routeCategoryAccess';
 import { UserRole } from '../../../../shared/constants/roles';
@@ -43,6 +44,7 @@ export class RouteController {
     private startRouteUseCase: StartRouteUseCase,
     private routeDeliveryUseCase: RouteDeliveryUseCase,
     private getRouteTrackingUseCase: GetRouteTrackingUseCase,
+    private getRoutePlannedSegmentUseCase: GetRoutePlannedSegmentUseCase,
     private listLiveRoutesUseCase: ListLiveRoutesUseCase
   ) {}
 
@@ -247,6 +249,18 @@ export class RouteController {
     }
   };
 
+  getPlannedSegment = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.getRoutePlannedSegmentUseCase.execute(
+        String(req.params.id),
+        req.user
+      );
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   listLive = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.listLiveRoutesUseCase.execute(
@@ -289,6 +303,8 @@ export class RouteController {
           lng?: number;
           recordedAt?: string;
         }>;
+        plannedStopId?: string;
+        progressIndex?: number;
       };
       const rawLocations = Array.isArray(body.locations) ? body.locations : [];
       const points = rawLocations.map((point) => ({
@@ -299,7 +315,11 @@ export class RouteController {
       const data = await this.routeDeliveryUseCase.reportLocationBatch(
         String(req.params.id),
         req.user.id,
-        points
+        points,
+        {
+          plannedStopId: body.plannedStopId,
+          progressIndex: body.progressIndex,
+        }
       );
       res.status(200).json({ success: true, data });
     } catch (error) {

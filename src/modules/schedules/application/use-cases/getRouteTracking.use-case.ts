@@ -120,6 +120,8 @@ export class GetRouteTrackingUseCase {
       dropoffs: enriched.dropoffs ?? [],
       progress: enriched.progress ?? null,
       locationTrail,
+      driverRouteSegmentStopId: route.driverRouteSegmentStopId ?? null,
+      driverRouteProgressIndex: route.driverRouteProgressIndex ?? null,
     };
   }
 }

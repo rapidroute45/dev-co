@@ -264,6 +264,8 @@ export type DriverCurrentLocationPayload = {
     thresholdMinutes: number;
     alertSent: boolean;
   } | null;
+  segmentStopId?: string;
+  progressIndex?: number;
 };
 
 export type DriverStationaryPayload = {

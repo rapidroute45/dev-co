@@ -41,6 +41,8 @@ export interface RouteProps {
   managerVerifiedAt?: Date | null;
   managerVerifiedBy?: string | null;
   driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
+  driverRouteSegmentStopId?: string | null;
+  driverRouteProgressIndex?: number | null;
   driverDwellAnchorLat?: number | null;
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;
@@ -168,6 +170,12 @@ export class Route {
   }
   get driverRoutePath() {
     return this.props.driverRoutePath ?? [];
+  }
+  get driverRouteSegmentStopId() {
+    return this.props.driverRouteSegmentStopId ?? null;
+  }
+  get driverRouteProgressIndex() {
+    return this.props.driverRouteProgressIndex ?? null;
   }
   get driverDwellAnchorLat() {
     return this.props.driverDwellAnchorLat ?? null;
