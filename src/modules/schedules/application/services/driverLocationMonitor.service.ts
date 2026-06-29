@@ -12,6 +12,7 @@ import {
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { RouteAutoCompleteService } from './routeAutoComplete.service';
+import { findStopDwellFromBatch } from '../utils/batchStopDwell';
 import { haversineMeters } from '../utils/haversine';
 import { asLocationDate } from '../utils/locationDates';
 import {
@@ -23,7 +24,7 @@ import {
 } from '../constants/driverLocationMonitor.constants';
 import type { Route } from '../../domain/entities/route.entity';
 
-type LocationPoint = { lat: number; lng: number; recordedAt: Date };
+type LocationPoint = { lat: number; lng: number; rawLat?: number; rawLng?: number; recordedAt: Date };
 
 type MonitorContext = {
   routeId: string;
@@ -42,7 +43,7 @@ export class DriverLocationMonitorService {
     private notificationService: NotificationService
   ) {}
 
-  /** Evaluate dwell / stop proximity from the latest point in each uploaded batch. */
+  /** Evaluate dwell / stop proximity from uploaded batch (full scan + latest point). */
   async processLocationBatch(
     route: Route,
     points: LocationPoint[],
@@ -51,7 +52,6 @@ export class DriverLocationMonitorService {
     if (route.status !== RouteStatus.IN_PROGRESS || !route.id || !route.driverId) return;
     if (points.length === 0) return;
 
-    const latest = points[points.length - 1]!;
     const driver = await this.userRepo.findById(route.driverId);
     const ctx: MonitorContext = {
       routeId: route.id,
@@ -62,7 +62,15 @@ export class DriverLocationMonitorService {
     };
 
     let currentRoute = route;
+    const latest = points[points.length - 1]!;
     currentRoute = (await this.trackStationary(currentRoute, latest, ctx)) ?? currentRoute;
+
+    try {
+      await this.scanBatchForStopDwell(currentRoute, points, ctx);
+    } catch (error) {
+      console.warn('[location-monitor] batch dwell scan failed', { routeId: ctx.routeId, error });
+    }
+
     try {
       await this.trackStopProximity(currentRoute, latest, ctx);
     } catch (error) {
@@ -70,6 +78,32 @@ export class DriverLocationMonitorService {
         routeId: ctx.routeId,
         error,
       });
+    }
+  }
+
+  /** Retroactive auto-complete from full batch timestamps (offline sync). */
+  private async scanBatchForStopDwell(
+    route: Route,
+    points: LocationPoint[],
+    ctx: MonitorContext
+  ) {
+    if (!route.id || route.status !== RouteStatus.IN_PROGRESS) return;
+
+    const stops = await this.routeStopRepo.findByRouteId(route.id);
+    const pendingDropoffs = stops.filter(
+      (stop) => stop.type === 'dropoff' && stop.status === RouteStopStatus.PENDING
+    );
+
+    for (const stop of pendingDropoffs) {
+      const destLat = stop.destinationLat ?? stop.lat;
+      const destLng = stop.destinationLng ?? stop.lng;
+      if (destLat == null || destLng == null || !stop.id) continue;
+
+      const match = findStopDwellFromBatch(points, { lat: destLat, lng: destLng });
+      if (match) {
+        await this.autoCompleteStop(route, stop.id, ctx);
+        break;
+      }
     }
   }
 

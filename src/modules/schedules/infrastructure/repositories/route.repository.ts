@@ -49,6 +49,9 @@ function mapDoc(doc: {
   driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
   driverRouteSegmentStopId?: string | null;
   driverRouteProgressIndex?: number | null;
+  driverActiveSegmentPolyline?: { lat: number; lng: number }[];
+  driverSegmentVersion?: number | null;
+  driverSegmentReroutedAt?: Date | null;
   driverDwellAnchorLat?: number | null;
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;
@@ -97,6 +100,12 @@ function mapDoc(doc: {
     })),
     driverRouteSegmentStopId: doc.driverRouteSegmentStopId ?? null,
     driverRouteProgressIndex: doc.driverRouteProgressIndex ?? null,
+    driverActiveSegmentPolyline: (doc.driverActiveSegmentPolyline ?? []).map((point) => ({
+      lat: point.lat,
+      lng: point.lng,
+    })),
+    driverSegmentVersion: doc.driverSegmentVersion ?? null,
+    driverSegmentReroutedAt: doc.driverSegmentReroutedAt ?? null,
     driverDwellAnchorLat: doc.driverDwellAnchorLat ?? null,
     driverDwellAnchorLng: doc.driverDwellAnchorLng ?? null,
     driverDwellStartedAt: doc.driverDwellStartedAt ?? null,

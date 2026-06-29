@@ -14,6 +14,7 @@ import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-ca
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 import { GetRouteTrackingUseCase } from '../../application/use-cases/getRouteTracking.use-case';
 import { GetRoutePlannedSegmentUseCase } from '../../application/use-cases/getRoutePlannedSegment.use-case';
+import { RerouteRouteSegmentUseCase } from '../../application/use-cases/rerouteRouteSegment.use-case';
 import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
 import { sanitizeRoutePayloadForRole } from '../../../../shared/utils/routeCategoryAccess';
 import { UserRole } from '../../../../shared/constants/roles';
@@ -45,6 +46,7 @@ export class RouteController {
     private routeDeliveryUseCase: RouteDeliveryUseCase,
     private getRouteTrackingUseCase: GetRouteTrackingUseCase,
     private getRoutePlannedSegmentUseCase: GetRoutePlannedSegmentUseCase,
+    private rerouteRouteSegmentUseCase: RerouteRouteSegmentUseCase,
     private listLiveRoutesUseCase: ListLiveRoutesUseCase
   ) {}
 
@@ -261,6 +263,22 @@ export class RouteController {
     }
   };
 
+  rerouteSegment = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const { lat, lng } = req.body as { lat?: number; lng?: number };
+      const data = await this.rerouteRouteSegmentUseCase.execute(
+        String(req.params.id),
+        req.user.id,
+        Number(lat),
+        Number(lng)
+      );
+      res.status(200).json({ success: true, data });
+    } catch (error) {
+      next(error);
+    }
+  };
+
   listLive = async (req: Request, res: Response, next: NextFunction) => {
     try {
       const result = await this.listLiveRoutesUseCase.execute(
@@ -301,6 +319,8 @@ export class RouteController {
         locations?: Array<{
           lat?: number;
           lng?: number;
+          rawLat?: number;
+          rawLng?: number;
           recordedAt?: string;
         }>;
         plannedStopId?: string;
@@ -310,6 +330,8 @@ export class RouteController {
       const points = rawLocations.map((point) => ({
         lat: Number(point?.lat),
         lng: Number(point?.lng),
+        rawLat: point?.rawLat != null ? Number(point.rawLat) : undefined,
+        rawLng: point?.rawLng != null ? Number(point.rawLng) : undefined,
         recordedAt: point?.recordedAt,
       }));
       const data = await this.routeDeliveryUseCase.reportLocationBatch(

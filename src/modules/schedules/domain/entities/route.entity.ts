@@ -43,6 +43,9 @@ export interface RouteProps {
   driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
   driverRouteSegmentStopId?: string | null;
   driverRouteProgressIndex?: number | null;
+  driverActiveSegmentPolyline?: { lat: number; lng: number }[];
+  driverSegmentVersion?: number | null;
+  driverSegmentReroutedAt?: Date | null;
   driverDwellAnchorLat?: number | null;
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;
@@ -176,6 +179,15 @@ export class Route {
   }
   get driverRouteProgressIndex() {
     return this.props.driverRouteProgressIndex ?? null;
+  }
+  get driverActiveSegmentPolyline() {
+    return this.props.driverActiveSegmentPolyline ?? [];
+  }
+  get driverSegmentVersion() {
+    return this.props.driverSegmentVersion ?? null;
+  }
+  get driverSegmentReroutedAt() {
+    return this.props.driverSegmentReroutedAt ?? null;
   }
   get driverDwellAnchorLat() {
     return this.props.driverDwellAnchorLat ?? null;

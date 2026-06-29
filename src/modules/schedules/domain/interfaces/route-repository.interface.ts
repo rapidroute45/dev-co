@@ -38,6 +38,9 @@ export interface RouteUpdateData {
   driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
   driverRouteSegmentStopId?: string | null;
   driverRouteProgressIndex?: number | null;
+  driverActiveSegmentPolyline?: { lat: number; lng: number }[];
+  driverSegmentVersion?: number | null;
+  driverSegmentReroutedAt?: Date | null;
   driverDwellAnchorLat?: number | null;
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;

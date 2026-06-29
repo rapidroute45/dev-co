@@ -33,6 +33,7 @@ import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMy
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { GetRouteTrackingUseCase } from '../../application/use-cases/getRouteTracking.use-case';
 import { GetRoutePlannedSegmentUseCase } from '../../application/use-cases/getRoutePlannedSegment.use-case';
+import { RerouteRouteSegmentUseCase } from '../../application/use-cases/rerouteRouteSegment.use-case';
 import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
 import { RouteController } from '../controllers/route.controller';
 import { requireAuth } from '../../../../shared/middleware/auth.middleware';
@@ -101,6 +102,8 @@ const getRoutePlannedSegment = new GetRoutePlannedSegmentUseCase(
   routeStopRepo,
   scheduleRepo
 );
+
+const rerouteRouteSegment = new RerouteRouteSegmentUseCase(routeRepo, routeStopRepo);
 
 const listLiveRoutes = new ListLiveRoutesUseCase(
   routeRepo,
@@ -196,6 +199,7 @@ const controller = new RouteController(
   routeDelivery,
   getRouteTracking,
   getRoutePlannedSegment,
+  rerouteRouteSegment,
   listLiveRoutes
 );
 
@@ -215,6 +219,7 @@ router.post('/:id/decline', driverGuard, controller.decline);
 router.post('/:id/start', driverGuard, controller.startRoute);
 router.post('/:id/location', driverGuard, controller.reportLocation);
 router.post('/:id/location/batch', driverGuard, controller.reportLocationBatch);
+router.post('/:id/reroute-segment', driverGuard, controller.rerouteSegment);
 router.post('/:id/complete', driverGuard, controller.completeRoute);
 router.post('/:routeId/stops/:stopId/complete', driverGuard, controller.completeStop);
 router.post('/:routeId/stops/:stopId/return', driverGuard, controller.returnStop);
