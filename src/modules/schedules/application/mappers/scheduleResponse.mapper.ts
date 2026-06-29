@@ -97,6 +97,11 @@ export function mapRouteToResponse(
     dropoffs: extras?.dropoffs ?? [],
     progress: extras?.progress ?? null,
     driverLocation,
+    driverRoutePath: (route.driverRoutePath ?? []).map((point) => ({
+      lat: point.lat,
+      lng: point.lng,
+      recordedAt: point.recordedAt,
+    })),
     totalMiles: extras?.totalMiles ?? route.totalMiles ?? null,
     arrivalTime: route.arrivalTime,
     departureTime: route.departureTime,
