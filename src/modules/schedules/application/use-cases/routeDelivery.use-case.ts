@@ -412,7 +412,7 @@ export class RouteDeliveryUseCase {
   async reportLocationBatch(
     routeId: string,
     driverId: string,
-    points: Array<{ lat: number; lng: number; recordedAt?: string }>,
+    points: Array<{ lat: number; lng: number; rawLat?: number; rawLng?: number; recordedAt?: string }>,
     meta?: { plannedStopId?: string; progressIndex?: number }
   ) {
     const route = await this.assertDriverRoute(routeId, driverId);
@@ -424,11 +424,17 @@ export class RouteDeliveryUseCase {
     }
 
     const ordered = [...points]
-      .map((point) => ({
-        lat: Number(point.lat),
-        lng: Number(point.lng),
-        recordedAt: parseClientRecordedAt(point.recordedAt),
-      }))
+      .map((point) => {
+        const lat = Number(point.rawLat ?? point.lat);
+        const lng = Number(point.rawLng ?? point.lng);
+        return {
+          lat,
+          lng,
+          rawLat: Number.isFinite(Number(point.rawLat)) ? Number(point.rawLat) : lat,
+          rawLng: Number.isFinite(Number(point.rawLng)) ? Number(point.rawLng) : lng,
+          recordedAt: parseClientRecordedAt(point.recordedAt),
+        };
+      })
       .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
       .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
 

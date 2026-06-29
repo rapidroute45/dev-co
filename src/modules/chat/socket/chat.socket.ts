@@ -268,6 +268,16 @@ export type DriverCurrentLocationPayload = {
   progressIndex?: number;
 };
 
+export type DriverSegmentReroutedPayload = {
+  routeId: string;
+  scheduleId: string;
+  driverId: string;
+  stopId: string;
+  segmentVersion: number;
+  progressIndex: number;
+  reroutedAt: string;
+};
+
 export type DriverStationaryPayload = {
   routeId: string;
   scheduleId: string;
@@ -287,4 +297,9 @@ export function emitDriverCurrentLocation(payload: DriverCurrentLocationPayload)
 export function emitDriverStationary(payload: DriverStationaryPayload) {
   if (!io) return;
   io.to(roomManagers()).emit('driver:stationary', payload);
+}
+
+export function emitDriverSegmentRerouted(payload: DriverSegmentReroutedPayload) {
+  if (!io) return;
+  io.to(roomManagers()).emit('driver:segment-rerouted', payload);
 }

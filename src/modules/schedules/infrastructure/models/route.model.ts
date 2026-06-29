@@ -70,6 +70,17 @@ const RouteSchema = new Schema(
     },
     driverRouteSegmentStopId: { type: String, default: null },
     driverRouteProgressIndex: { type: Number, default: null },
+    driverActiveSegmentPolyline: {
+      type: [
+        {
+          lat: { type: Number, required: true },
+          lng: { type: Number, required: true },
+        },
+      ],
+      default: [],
+    },
+    driverSegmentVersion: { type: Number, default: null },
+    driverSegmentReroutedAt: { type: Date, default: null },
     driverDwellAnchorLat: { type: Number, default: null },
     driverDwellAnchorLng: { type: Number, default: null },
     driverDwellStartedAt: { type: Date, default: null },

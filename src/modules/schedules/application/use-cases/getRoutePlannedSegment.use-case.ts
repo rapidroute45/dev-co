@@ -88,6 +88,35 @@ export class GetRoutePlannedSegmentUseCase {
       throw new AppError('Next stop has no map coordinates.', 400);
     }
 
+    const storedPolyline = route.driverActiveSegmentPolyline ?? [];
+    const storedMatchesStop =
+      route.driverRouteSegmentStopId === nextStop.id && storedPolyline.length >= 2;
+
+    if (storedMatchesStop) {
+      let distanceM = 0;
+      for (let i = 1; i < storedPolyline.length; i += 1) {
+        distanceM += haversineMeters(
+          storedPolyline[i - 1]!.lat,
+          storedPolyline[i - 1]!.lng,
+          storedPolyline[i]!.lat,
+          storedPolyline[i]!.lng
+        );
+      }
+
+      return {
+        stopId: nextStop.id,
+        stopSequence: nextStop.sequence ?? null,
+        stopName: nextStop.name,
+        stopLat: destCoords.lat,
+        stopLng: destCoords.lng,
+        polyline: storedPolyline,
+        distanceM: Math.round(distanceM),
+        routeStatus: route.status,
+        progressIndex: route.driverRouteProgressIndex ?? 0,
+        segmentVersion: route.driverSegmentVersion ?? 0,
+      };
+    }
+
     const origin =
       route.driverLat != null &&
       route.driverLng != null &&
@@ -121,6 +150,7 @@ export class GetRoutePlannedSegmentUseCase {
       distanceM: Math.round(distanceM),
       routeStatus: route.status,
       progressIndex: route.driverRouteProgressIndex ?? 0,
+      segmentVersion: route.driverSegmentVersion ?? 0,
     };
   }
 }
