@@ -47,6 +47,8 @@ function mapDoc(doc: {
   managerVerifiedAt?: Date | null;
   managerVerifiedBy?: { toString(): string } | null;
   driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
+  driverRouteSegmentStopId?: string | null;
+  driverRouteProgressIndex?: number | null;
   driverDwellAnchorLat?: number | null;
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;
@@ -93,6 +95,8 @@ function mapDoc(doc: {
       lng: point.lng,
       recordedAt: point.recordedAt,
     })),
+    driverRouteSegmentStopId: doc.driverRouteSegmentStopId ?? null,
+    driverRouteProgressIndex: doc.driverRouteProgressIndex ?? null,
     driverDwellAnchorLat: doc.driverDwellAnchorLat ?? null,
     driverDwellAnchorLng: doc.driverDwellAnchorLng ?? null,
     driverDwellStartedAt: doc.driverDwellStartedAt ?? null,

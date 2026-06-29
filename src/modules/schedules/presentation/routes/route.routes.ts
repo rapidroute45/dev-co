@@ -32,8 +32,10 @@ import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.us
 import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { GetRouteTrackingUseCase } from '../../application/use-cases/getRouteTracking.use-case';
+import { GetRoutePlannedSegmentUseCase } from '../../application/use-cases/getRoutePlannedSegment.use-case';
 import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
 import { RouteController } from '../controllers/route.controller';
+import { requireAuth } from '../../../../shared/middleware/auth.middleware';
 import { TeamLeadScheduleAlertRepository } from '../../infrastructure/repositories/teamLeadScheduleAlert.repository';
 import { TeamLeadScheduleAlertService } from '../../application/services/teamLeadScheduleAlert.service';
 
@@ -92,6 +94,12 @@ const getRouteTracking = new GetRouteTrackingUseCase(
   userRepo,
   teamRepo,
   routeStopEnrichment
+);
+
+const getRoutePlannedSegment = new GetRoutePlannedSegmentUseCase(
+  routeRepo,
+  routeStopRepo,
+  scheduleRepo
 );
 
 const listLiveRoutes = new ListLiveRoutesUseCase(
@@ -187,6 +195,7 @@ const controller = new RouteController(
   ),
   routeDelivery,
   getRouteTracking,
+  getRoutePlannedSegment,
   listLiveRoutes
 );
 
@@ -197,6 +206,7 @@ router.get('/', scheduleViewerGuard, controller.list);
 router.post('/', [...dispatchOpsGuard, requireDispatchElevation], controller.create);
 router.get('/live', trackingViewerGuard, controller.listLive);
 router.get('/:id/tracking', trackingViewerGuard, controller.getTracking);
+router.get('/:id/planned-segment', requireAuth(), controller.getPlannedSegment);
 router.get('/:id', scheduleViewerGuard, controller.getById);
 router.put('/:id', [...dispatchOpsGuard, requireDispatchElevation], controller.update);
 router.post('/:id/assign-driver', teamLeadGuard, controller.assignDriver);

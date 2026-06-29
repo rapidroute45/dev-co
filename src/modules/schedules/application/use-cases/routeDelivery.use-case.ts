@@ -412,7 +412,8 @@ export class RouteDeliveryUseCase {
   async reportLocationBatch(
     routeId: string,
     driverId: string,
-    points: Array<{ lat: number; lng: number; recordedAt?: string }>
+    points: Array<{ lat: number; lng: number; recordedAt?: string }>,
+    meta?: { plannedStopId?: string; progressIndex?: number }
   ) {
     const route = await this.assertDriverRoute(routeId, driverId);
     if (route.status !== RouteStatus.IN_PROGRESS) {
@@ -444,15 +445,24 @@ export class RouteDeliveryUseCase {
     }));
     const driverRoutePath = mergeRoutePathPoints(route.driverRoutePath ?? [], incomingPath);
 
+    const routePatch: Parameters<typeof this.routeRepo.update>[1] = {
+      driverLat: latest.lat,
+      driverLng: latest.lng,
+      driverLocationAt: latest.recordedAt,
+      driverLocationIngestedAt: ingestedAt,
+      driverLocationBackgroundSharing: false,
+      driverRoutePath,
+    };
+
+    if (meta?.plannedStopId) {
+      routePatch.driverRouteSegmentStopId = meta.plannedStopId;
+    }
+    if (typeof meta?.progressIndex === 'number' && Number.isFinite(meta.progressIndex)) {
+      routePatch.driverRouteProgressIndex = Math.max(0, Math.floor(meta.progressIndex));
+    }
+
     const updatedRoute =
-      (await this.routeRepo.update(routeId, {
-        driverLat: latest.lat,
-        driverLng: latest.lng,
-        driverLocationAt: latest.recordedAt,
-        driverLocationIngestedAt: ingestedAt,
-        driverLocationBackgroundSharing: false,
-        driverRoutePath,
-      })) ?? route;
+      (await this.routeRepo.update(routeId, routePatch)) ?? route;
 
     let scheduleCity: string | null = null;
     try {
@@ -497,6 +507,8 @@ export class RouteDeliveryUseCase {
           recordedAt: point.recordedAt.toISOString(),
         })),
         dwell: this.locationMonitor.buildDwellPayload(routeForEmit),
+        segmentStopId: routeForEmit.driverRouteSegmentStopId ?? undefined,
+        progressIndex: routeForEmit.driverRouteProgressIndex ?? undefined,
       });
     } catch (error) {
       console.warn('[location-batch] socket emit failed — location still saved', {

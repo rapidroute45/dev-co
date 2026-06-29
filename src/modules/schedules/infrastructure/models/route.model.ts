@@ -68,6 +68,8 @@ const RouteSchema = new Schema(
       ],
       default: [],
     },
+    driverRouteSegmentStopId: { type: String, default: null },
+    driverRouteProgressIndex: { type: Number, default: null },
     driverDwellAnchorLat: { type: Number, default: null },
     driverDwellAnchorLng: { type: Number, default: null },
     driverDwellStartedAt: { type: Date, default: null },
