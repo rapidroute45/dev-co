@@ -7,10 +7,18 @@ const DEFAULT_SETTINGS: AppSettingsDoc = {
 
 export class AppSettingsRepository {
   async getOrCreate(): Promise<AppSettingsDoc> {
-    let doc = await AppSettingsModel.findOne().lean<AppSettingsDoc>();
-    if (!doc) {
-      doc = (await AppSettingsModel.create(DEFAULT_SETTINGS)).toObject() as AppSettingsDoc;
+    const existing = await AppSettingsModel.findOne().lean();
+    if (existing) {
+      return {
+        dispatchElevationPin: existing.dispatchElevationPin,
+        payrollElevationPin: existing.payrollElevationPin,
+      };
     }
-    return doc;
+
+    const created = await AppSettingsModel.create(DEFAULT_SETTINGS);
+    return {
+      dispatchElevationPin: created.dispatchElevationPin,
+      payrollElevationPin: created.payrollElevationPin,
+    };
   }
 }

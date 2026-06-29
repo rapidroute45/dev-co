@@ -5,31 +5,18 @@ import {
   UserUpdateData,
 } from '../../domain/interfaces/user-repository.interface';
 import { User } from '../../domain/entities/user.entity';
-import { UserModel } from '../models/user.model';
+import { UserModel, UserDocument } from '../models/user.model';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  email: string;
-  password: string;
-  fullName?: string | null;
-  phone?: string | null;
-  role?: string | null;
-  status: string;
-  teamId?: { toString(): string } | null;
-  assignedCity?: string | null;
-  assignedCities?: string[] | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): User {
+function mapDoc(doc: UserDocument): User {
   return new User({
     id: doc._id.toString(),
     email: doc.email,
     passwordHash: doc.password,
     fullName: doc.fullName ?? null,
     phone: doc.phone ?? null,
-    role: (doc.role as UserRole) ?? null,
-    status: doc.status as UserStatus,
+    role: doc.role ?? null,
+    status: doc.status,
     teamId: doc.teamId?.toString() ?? null,
     assignedCity: doc.assignedCity ?? null,
     assignedCities: doc.assignedCities ?? [],
