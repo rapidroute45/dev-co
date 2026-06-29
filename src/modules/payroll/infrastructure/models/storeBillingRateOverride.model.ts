@@ -1,6 +1,19 @@
 import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
+export interface StoreBillingRateOverrideDocument {
+  _id: Types.ObjectId;
+  storeId: Types.ObjectId;
+  smallRouteRate: number;
+  mediumRouteRate: number;
+  fullRouteRate: number;
+  overtimeHourlyRate?: number | null;
+  weeklyPerformanceIncentive?: number | null;
+  updatedBy?: Types.ObjectId | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const StoreBillingRateOverrideSchema = new Schema(
   {
     storeId: {
@@ -20,7 +33,7 @@ const StoreBillingRateOverrideSchema = new Schema(
   { timestamps: true }
 );
 
-export const StoreBillingRateOverrideModel = createScopedModel(
+export const StoreBillingRateOverrideModel = createScopedModel<StoreBillingRateOverrideDocument>(
   'StoreBillingRateOverride',
   StoreBillingRateOverrideSchema
 );

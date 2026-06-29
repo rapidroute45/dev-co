@@ -1,43 +1,24 @@
+import { Types, type HydratedDocument } from 'mongoose';
 import { RouteStopStatus } from '../../../../shared/constants/routeStopStatuses';
 import {
   IRouteStopRepository,
   RouteStopInput,
   RouteStopRecord,
 } from '../../domain/interfaces/route-stop-repository.interface';
-import { RouteStopModel } from '../models/routeStop.model';
+import { RouteStopModel, RouteStopDocument } from '../models/routeStop.model';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  routeId: { toString(): string };
-  scheduleId: { toString(): string };
-  sequence: number;
-  type: string;
-  name: string;
-  address: string;
-  status?: string;
-  accessCode?: string | null;
-  deliveryPhotoUrl?: string | null;
-  returnReason?: string | null;
-  returnReasonCustom?: string | null;
-  completedAt?: Date | null;
-  lat?: number | null;
-  lng?: number | null;
-  destinationLat?: number | null;
-  destinationLng?: number | null;
-  placeId?: string | null;
-  proximityAnchorLat?: number | null;
-  proximityAnchorLng?: number | null;
-  proximityEnteredAt?: Date | null;
-}): RouteStopRecord {
+type RouteStopDocSource = RouteStopDocument | HydratedDocument<RouteStopDocument>;
+
+function mapDoc(doc: RouteStopDocSource): RouteStopRecord {
   return {
     id: doc._id.toString(),
     routeId: doc.routeId.toString(),
     scheduleId: doc.scheduleId.toString(),
     sequence: doc.sequence,
-    type: doc.type as RouteStopRecord['type'],
+    type: doc.type,
     name: doc.name,
     address: doc.address,
-    status: (doc.status as RouteStopStatus) ?? RouteStopStatus.PENDING,
+    status: doc.status ?? RouteStopStatus.PENDING,
     accessCode: doc.accessCode ?? null,
     deliveryPhotoUrl: doc.deliveryPhotoUrl ?? null,
     returnReason: doc.returnReason ?? null,
@@ -61,17 +42,21 @@ export class RouteStopRepository implements IRouteStopRepository {
   }
 
   async findByRouteId(routeId: string): Promise<RouteStopRecord[]> {
-    const docs = await RouteStopModel.find({ routeId }).sort({ sequence: 1 });
-    return docs.map(mapDoc);
+    const docs = await RouteStopModel.find({ routeId: new Types.ObjectId(routeId) }).sort({
+      sequence: 1,
+    });
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async findByRouteIds(routeIds: string[]): Promise<RouteStopRecord[]> {
     if (routeIds.length === 0) return [];
-    const docs = await RouteStopModel.find({ routeId: { $in: routeIds } }).sort({
+    const docs = await RouteStopModel.find({
+      routeId: { $in: routeIds.map((id) => new Types.ObjectId(id)) },
+    }).sort({
       routeId: 1,
       sequence: 1,
     });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async replaceForRoute(
@@ -79,10 +64,10 @@ export class RouteStopRepository implements IRouteStopRepository {
     scheduleId: string,
     stops: RouteStopInput[]
   ): Promise<RouteStopRecord[]> {
-    const existing = await RouteStopModel.find({ routeId });
-    const existingById = new Map(
-      existing.map((doc) => [String(doc._id), doc])
-    );
+    const routeOid = new Types.ObjectId(routeId);
+    const scheduleOid = new Types.ObjectId(scheduleId);
+    const existing = await RouteStopModel.find({ routeId: routeOid });
+    const existingById = new Map(existing.map((doc) => [String(doc._id), doc]));
     const existingByKey = new Map(
       existing.map((doc) => [
         `${doc.name.trim().toLowerCase()}|${doc.address.trim().toLowerCase()}`,
@@ -90,7 +75,7 @@ export class RouteStopRepository implements IRouteStopRepository {
       ])
     );
 
-    await RouteStopModel.deleteMany({ routeId });
+    await RouteStopModel.deleteMany({ routeId: routeOid });
     if (stops.length === 0) return [];
 
     const docs = await RouteStopModel.insertMany(
@@ -102,8 +87,8 @@ export class RouteStopRepository implements IRouteStopRepository {
           );
 
         return {
-          routeId,
-          scheduleId,
+          routeId: routeOid,
+          scheduleId: scheduleOid,
           sequence: s.sequence,
           type: s.type,
           name: s.name.trim(),
@@ -121,7 +106,7 @@ export class RouteStopRepository implements IRouteStopRepository {
       })
     );
 
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async updateById(
@@ -153,10 +138,10 @@ export class RouteStopRepository implements IRouteStopRepository {
   }
 
   async deleteByRouteId(routeId: string): Promise<void> {
-    await RouteStopModel.deleteMany({ routeId });
+    await RouteStopModel.deleteMany({ routeId: new Types.ObjectId(routeId) });
   }
 
   async deleteByScheduleId(scheduleId: string): Promise<void> {
-    await RouteStopModel.deleteMany({ scheduleId });
+    await RouteStopModel.deleteMany({ scheduleId: new Types.ObjectId(scheduleId) });
   }
 }

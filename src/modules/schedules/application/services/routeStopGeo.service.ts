@@ -9,6 +9,11 @@ import {
   geocodeAddress,
   type GeocodeContext,
 } from '../utils/geocodeAddress';
+import {
+  readStopDestinationCoords,
+  STOP_COORD_DRIFT_THRESHOLD_M,
+} from '../utils/stopDestinationCoords';
+import { haversineMeters } from '../utils/haversine';
 import { hasGoogleMapsApiKey } from '../../../../shared/constants/googleMaps';
 
 /** Above this count, skip blocking geocode calls during save. */
@@ -110,27 +115,43 @@ export async function buildGeocodedRouteStops(params: {
   return [pickup, ...stops];
 }
 
-/** Fill missing stop coordinates after a fast bulk save. */
+/** Fill missing or drifted stop coordinates after save or before map routing. */
 export async function geocodeMissingRouteStops(params: {
   routeStopRepo: IRouteStopRepository;
   routeId: string;
   geocodeContext: GeocodeContext;
-}): Promise<void> {
+}): Promise<boolean> {
   const { routeStopRepo, routeId, geocodeContext } = params;
   const stops = await routeStopRepo.findByRouteId(routeId);
+  let updated = false;
 
   for (const stop of stops) {
-    if (stop.destinationLat != null && stop.destinationLng != null) continue;
     if (!stop.id || !stop.address.trim()) continue;
 
     const geo = await rateLimitedGeocode(stop.address, geocodeContext);
     if (!geo) continue;
 
-    await routeStopRepo.updateById(stop.id, {
-      destinationLat: geo.lat,
-      destinationLng: geo.lng,
-    });
+    const stored = readStopDestinationCoords(stop);
+    if (!stored) {
+      await routeStopRepo.updateById(stop.id, {
+        destinationLat: geo.lat,
+        destinationLng: geo.lng,
+      });
+      updated = true;
+      continue;
+    }
+
+    const driftM = haversineMeters(stored.lat, stored.lng, geo.lat, geo.lng);
+    if (driftM > STOP_COORD_DRIFT_THRESHOLD_M) {
+      await routeStopRepo.updateById(stop.id, {
+        destinationLat: geo.lat,
+        destinationLng: geo.lng,
+      });
+      updated = true;
+    }
   }
+
+  return updated;
 }
 
 export function scheduleRouteStopGeocoding(params: {

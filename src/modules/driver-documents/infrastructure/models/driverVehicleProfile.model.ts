@@ -1,10 +1,20 @@
-import mongoose from 'mongoose';
+import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
-const driverVehicleProfileSchema = new mongoose.Schema(
+export interface DriverVehicleProfileDocument {
+  _id: Types.ObjectId;
+  driverId: Types.ObjectId;
+  plateNumber?: string | null;
+  vehiclePhotoUrl?: string | null;
+  vehiclePhotoMimeType?: string | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+const driverVehicleProfileSchema = new Schema(
   {
     driverId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Types.ObjectId,
       ref: 'User',
       required: true,
       unique: true,
@@ -16,7 +26,7 @@ const driverVehicleProfileSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-export const DriverVehicleProfileModel = createScopedModel(
+export const DriverVehicleProfileModel = createScopedModel<DriverVehicleProfileDocument>(
   'DriverVehicleProfile',
   driverVehicleProfileSchema
 );

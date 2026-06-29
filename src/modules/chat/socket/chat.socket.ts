@@ -288,6 +288,15 @@ export type DriverStationaryPayload = {
   driverName?: string;
 };
 
+export type DriverOffRoutePayload = {
+  routeId: string;
+  scheduleId: string;
+  driverId: string;
+  lat: number;
+  lng: number;
+  driverName?: string;
+};
+
 /** Live driver location for dispatch tracking maps. */
 export function emitDriverCurrentLocation(payload: DriverCurrentLocationPayload) {
   if (!io) return;
@@ -297,6 +306,11 @@ export function emitDriverCurrentLocation(payload: DriverCurrentLocationPayload)
 export function emitDriverStationary(payload: DriverStationaryPayload) {
   if (!io) return;
   io.to(roomManagers()).emit('driver:stationary', payload);
+}
+
+export function emitDriverOffRoute(payload: DriverOffRoutePayload) {
+  if (!io) return;
+  io.to(roomManagers()).emit('driver:off-route', payload);
 }
 
 export function emitDriverSegmentRerouted(payload: DriverSegmentReroutedPayload) {

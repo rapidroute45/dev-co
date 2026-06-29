@@ -1,6 +1,7 @@
 import express, { Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
+import helmet from 'helmet';
 import path from 'path';
 import mongoose from 'mongoose';
 import multer from 'multer';
@@ -23,6 +24,13 @@ import { resolveCorsOrigins } from './config/cors';
 const app = express();
 
 const corsOrigins = resolveCorsOrigins();
+
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    crossOriginEmbedderPolicy: false,
+  })
+);
 
 app.use(cors({
   origin: corsOrigins,

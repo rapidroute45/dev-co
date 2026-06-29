@@ -2,6 +2,19 @@ import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { NotificationType } from '../../domain/entities/notification.entity';
 
+export interface NotificationDocument {
+  _id: Types.ObjectId;
+  recipientId: Types.ObjectId;
+  type: NotificationType;
+  title: string;
+  message: string;
+  payload?: Record<string, unknown>;
+  read: boolean;
+  pushSent?: boolean;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const NotificationSchema = new Schema(
   {
     recipientId: { type: Types.ObjectId, ref: 'User', required: true, index: true },
@@ -17,4 +30,7 @@ const NotificationSchema = new Schema(
 
 NotificationSchema.index({ recipientId: 1, createdAt: -1 });
 
-export const NotificationModel = createScopedModel('Notification', NotificationSchema);
+export const NotificationModel = createScopedModel<NotificationDocument>(
+  'Notification',
+  NotificationSchema
+);

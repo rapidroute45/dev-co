@@ -4,21 +4,10 @@ import {
   StoreListFilters,
   StoreUpdateData,
 } from '../../domain/interfaces/store-repository.interface';
-import { StoreModel } from '../models/store.model';
-import { StoreActiveStatus } from '../../../../shared/constants/storeStatuses';
+import { StoreDocument, StoreModel } from '../models/store.model';
 import { applyCityListFilter } from '../../../../shared/services/cityScope.service';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  storeName: string;
-  storeId: string;
-  city: string;
-  state: string;
-  address?: string | null;
-  activeStatus: string;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): Store {
+function mapDoc(doc: StoreDocument): Store {
   return new Store({
     id: doc._id.toString(),
     storeName: doc.storeName,
@@ -26,7 +15,7 @@ function mapDoc(doc: {
     city: doc.city,
     state: doc.state,
     address: doc.address ?? null,
-    activeStatus: doc.activeStatus as StoreActiveStatus,
+    activeStatus: doc.activeStatus,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
@@ -70,7 +59,7 @@ export class StoreRepository implements IStoreRepository {
       StoreModel.countDocuments(query),
     ]);
 
-    return { items: docs.map(mapDoc), total };
+    return { items: docs.map((doc) => mapDoc(doc)), total };
   }
 
   async countByStoreIdPrefix(prefix: string): Promise<number> {

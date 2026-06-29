@@ -1,4 +1,8 @@
-import { PayrollRouteAdjustmentModel } from '../models/payrollRouteAdjustment.model';
+import { Types } from 'mongoose';
+import {
+  PayrollRouteAdjustmentDocument,
+  PayrollRouteAdjustmentModel,
+} from '../models/payrollRouteAdjustment.model';
 
 export type PayrollRouteAdjustmentRecord = {
   id: string;
@@ -12,17 +16,7 @@ export type PayrollRouteAdjustmentRecord = {
   adjustedAt: Date;
 };
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  routeId: { toString(): string };
-  driverId: { toString(): string };
-  teamId: { toString(): string };
-  originalAmount: number;
-  adjustedAmount: number;
-  reason?: string | null;
-  adjustedBy: { toString(): string };
-  adjustedAt: Date;
-}): PayrollRouteAdjustmentRecord {
+function mapDoc(doc: PayrollRouteAdjustmentDocument): PayrollRouteAdjustmentRecord {
   return {
     id: doc._id.toString(),
     routeId: doc.routeId.toString(),
@@ -38,14 +32,18 @@ function mapDoc(doc: {
 
 export class PayrollRouteAdjustmentRepository {
   async findByRouteId(routeId: string): Promise<PayrollRouteAdjustmentRecord | null> {
-    const doc = await PayrollRouteAdjustmentModel.findOne({ routeId });
+    const doc = await PayrollRouteAdjustmentModel.findOne({
+      routeId: new Types.ObjectId(routeId),
+    });
     return doc ? mapDoc(doc) : null;
   }
 
   async findByRouteIds(routeIds: string[]): Promise<PayrollRouteAdjustmentRecord[]> {
     if (routeIds.length === 0) return [];
-    const docs = await PayrollRouteAdjustmentModel.find({ routeId: { $in: routeIds } });
-    return docs.map(mapDoc);
+    const docs = await PayrollRouteAdjustmentModel.find({
+      routeId: { $in: routeIds.map((id) => new Types.ObjectId(id)) },
+    });
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async upsert(params: {
@@ -57,23 +55,28 @@ export class PayrollRouteAdjustmentRepository {
     reason: string | null;
     adjustedBy: string;
   }): Promise<PayrollRouteAdjustmentRecord> {
+    const routeOid = new Types.ObjectId(params.routeId);
     const doc = await PayrollRouteAdjustmentModel.findOneAndUpdate(
-      { routeId: params.routeId },
+      { routeId: routeOid },
       {
-        driverId: params.driverId,
-        teamId: params.teamId,
+        routeId: routeOid,
+        driverId: new Types.ObjectId(params.driverId),
+        teamId: new Types.ObjectId(params.teamId),
         originalAmount: params.originalAmount,
         adjustedAmount: params.adjustedAmount,
         reason: params.reason?.trim() || null,
-        adjustedBy: params.adjustedBy,
+        adjustedBy: new Types.ObjectId(params.adjustedBy),
         adjustedAt: new Date(),
       },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
-    return mapDoc(doc!);
+    if (!doc) throw new Error('Failed to save payroll route adjustment');
+    return mapDoc(doc);
   }
 
   async deleteByRouteId(routeId: string): Promise<void> {
-    await PayrollRouteAdjustmentModel.deleteOne({ routeId });
+    await PayrollRouteAdjustmentModel.deleteOne({
+      routeId: new Types.ObjectId(routeId),
+    });
   }
 }

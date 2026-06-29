@@ -6,6 +6,7 @@ import { resolveDisplayName } from '../../../../shared/utils/displayName';
 import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
 import { NotificationService } from '../../../notifications/application/services/notification.service';
 import {
+  emitDriverOffRoute,
   emitDriverStationary,
   emitRouteUpdated,
 } from '../../../chat/socket/chat.socket';
@@ -13,9 +14,12 @@ import { IRouteRepository } from '../../domain/interfaces/route-repository.inter
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { RouteAutoCompleteService } from './routeAutoComplete.service';
 import { findStopDwellFromBatch } from '../utils/batchStopDwell';
+import { distanceToPolylineM } from '../utils/distanceToPolyline';
 import { haversineMeters } from '../utils/haversine';
+import { readStopDestinationCoords } from '../utils/stopDestinationCoords';
 import { asLocationDate } from '../utils/locationDates';
 import {
+  OFF_ROUTE_THRESHOLD_M,
   STATIONARY_DWELL_MS,
   STATIONARY_DWELL_MINUTES,
   STATIONARY_RADIUS_M,
@@ -47,7 +51,8 @@ export class DriverLocationMonitorService {
   async processLocationBatch(
     route: Route,
     points: LocationPoint[],
-    scheduleCity: string | null
+    scheduleCity: string | null,
+    options?: { offRoute?: boolean }
   ): Promise<void> {
     if (route.status !== RouteStatus.IN_PROGRESS || !route.id || !route.driverId) return;
     if (points.length === 0) return;
@@ -79,6 +84,16 @@ export class DriverLocationMonitorService {
         error,
       });
     }
+
+    try {
+      currentRoute =
+        (await this.trackOffRoute(currentRoute, latest, ctx, options?.offRoute)) ?? currentRoute;
+    } catch (error) {
+      console.warn('[location-monitor] off-route tracking failed', {
+        routeId: ctx.routeId,
+        error,
+      });
+    }
   }
 
   /** Retroactive auto-complete from full batch timestamps (offline sync). */
@@ -95,11 +110,10 @@ export class DriverLocationMonitorService {
     );
 
     for (const stop of pendingDropoffs) {
-      const destLat = stop.destinationLat ?? stop.lat;
-      const destLng = stop.destinationLng ?? stop.lng;
-      if (destLat == null || destLng == null || !stop.id) continue;
+      const dest = readStopDestinationCoords(stop);
+      if (!dest || !stop.id) continue;
 
-      const match = findStopDwellFromBatch(points, { lat: destLat, lng: destLng });
+      const match = findStopDwellFromBatch(points, dest);
       if (match) {
         await this.autoCompleteStop(route, stop.id, ctx);
         break;
@@ -217,11 +231,10 @@ export class DriverLocationMonitorService {
     const routeStartedAt = asLocationDate(route.startedAt);
 
     for (const stop of pendingDropoffs) {
-      const destLat = stop.destinationLat ?? stop.lat;
-      const destLng = stop.destinationLng ?? stop.lng;
-      if (destLat == null || destLng == null) continue;
+      const dest = readStopDestinationCoords(stop);
+      if (!dest) continue;
 
-      const distanceM = haversineMeters(point.lat, point.lng, destLat, destLng);
+      const distanceM = haversineMeters(point.lat, point.lng, dest.lat, dest.lng);
 
       if (distanceM <= STOP_PROXIMITY_RADIUS_M) {
         let enteredAt = asLocationDate(stop.proximityEnteredAt);
@@ -259,6 +272,109 @@ export class DriverLocationMonitorService {
         });
       }
     }
+  }
+
+  private isPointOffRoute(
+    route: Route,
+    point: LocationPoint,
+    mobileOffRoute?: boolean
+  ): boolean {
+    if (mobileOffRoute) return true;
+
+    const polyline = route.driverActiveSegmentPolyline ?? [];
+    if (polyline.length < 2) return false;
+
+    const rawLat = point.rawLat ?? point.lat;
+    const rawLng = point.rawLng ?? point.lng;
+    const distanceM = distanceToPolylineM({ lat: rawLat, lng: rawLng }, polyline);
+    return distanceM > OFF_ROUTE_THRESHOLD_M;
+  }
+
+  private async trackOffRoute(
+    route: Route,
+    point: LocationPoint,
+    ctx: MonitorContext,
+    mobileOffRoute?: boolean
+  ) {
+    if (!route.id) return route;
+
+    const offRoute = this.isPointOffRoute(route, point, mobileOffRoute);
+
+    if (offRoute) {
+      if (route.driverOffRouteAlertSentAt) return route;
+
+      const recipients = await resolveRouteOpsRecipientIds(
+        this.userRepo,
+        ctx.scheduleCity,
+        [ctx.driverId]
+      );
+
+      emitDriverOffRoute({
+        routeId: ctx.routeId,
+        scheduleId: ctx.scheduleId,
+        driverId: ctx.driverId,
+        lat: point.lat,
+        lng: point.lng,
+        driverName: ctx.driverName,
+      });
+
+      if (recipients.length > 0) {
+        await this.notificationService.notifyDriverOffRoute({
+          recipientIds: recipients,
+          routeId: ctx.routeId,
+          scheduleId: ctx.scheduleId,
+          driverId: ctx.driverId,
+          driverName: ctx.driverName,
+          lat: point.lat,
+          lng: point.lng,
+          city: ctx.scheduleCity,
+        });
+      }
+
+      return (
+        (await this.routeRepo.update(route.id, {
+          driverOffRouteAlertSentAt: point.recordedAt,
+        })) ?? route
+      );
+    }
+
+    if (route.driverOffRouteAlertSentAt) {
+      return (
+        (await this.routeRepo.update(route.id, {
+          driverOffRouteAlertSentAt: null,
+        })) ?? route
+      );
+    }
+
+    return route;
+  }
+
+  async notifyManualStopCompleted(
+    route: Route,
+    stop: { id: string; name: string },
+    scheduleCity: string | null
+  ) {
+    if (!route.id || !route.driverId) return;
+
+    const driver = await this.userRepo.findById(route.driverId);
+    const driverName = driver ? resolveDisplayName(driver.fullName, driver.email) : 'Driver';
+    const recipients = await resolveRouteOpsRecipientIds(
+      this.userRepo,
+      scheduleCity,
+      [route.driverId]
+    );
+
+    if (recipients.length === 0) return;
+
+    await this.notificationService.notifyStopCompleted({
+      recipientIds: recipients,
+      routeId: route.id,
+      scheduleId: route.scheduleId,
+      stopId: stop.id,
+      stopName: stop.name,
+      driverName,
+      city: scheduleCity,
+    });
   }
 
   private async autoCompleteStop(route: Route, stopId: string, ctx: MonitorContext) {

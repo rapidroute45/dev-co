@@ -18,6 +18,9 @@ export enum NotificationType {
   DISPATCH_TEAM_UPDATED = 'dispatch_team_updated',
   DRIVER_DWELLING = 'driver_dwelling',
   STOP_AUTO_COMPLETED = 'stop_auto_completed',
+  STOP_COMPLETED = 'stop_completed',
+  DRIVER_OFF_ROUTE = 'driver_off_route',
+  DRIVER_LOCATION_STALE = 'driver_location_stale',
 }
 
 export interface NotificationProps {

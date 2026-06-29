@@ -1,6 +1,16 @@
 import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
+export interface PayrollSettingsDocument {
+  _id: Types.ObjectId;
+  smallRouteRate: number;
+  mediumRouteRate: number;
+  fullRouteRate: number;
+  updatedBy?: Types.ObjectId | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const PayrollSettingsSchema = new Schema(
   {
     smallRouteRate: { type: Number, required: true, default: 200 },
@@ -11,4 +21,7 @@ const PayrollSettingsSchema = new Schema(
   { timestamps: true }
 );
 
-export const PayrollSettingsModel = createScopedModel('PayrollSettings', PayrollSettingsSchema);
+export const PayrollSettingsModel = createScopedModel<PayrollSettingsDocument>(
+  'PayrollSettings',
+  PayrollSettingsSchema
+);

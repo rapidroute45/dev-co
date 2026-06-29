@@ -1,23 +1,18 @@
 import mongoose from 'mongoose';
+import { AppError } from '../../../../shared/errors/app-error';
 import { DevicePlatform, DeviceToken } from '../../domain/entities/deviceToken.entity';
 import { IDeviceTokenRepository } from '../../domain/interfaces/device-token-repository.interface';
-import { DeviceTokenModel } from '../models/deviceToken.model';
+import {
+  DeviceTokenDocument,
+  DeviceTokenModel,
+} from '../models/deviceToken.model';
 
 function toUserObjectId(userId: string): mongoose.Types.ObjectId | null {
   if (!mongoose.Types.ObjectId.isValid(userId)) return null;
   return new mongoose.Types.ObjectId(userId);
 }
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  userId: { toString(): string };
-  token: string;
-  platform: DevicePlatform;
-  deviceId?: string | null;
-  lastSeenAt?: Date;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): DeviceToken {
+function mapDoc(doc: DeviceTokenDocument): DeviceToken {
   return new DeviceToken({
     id: doc._id.toString(),
     userId: doc.userId.toString(),
@@ -54,6 +49,10 @@ export class DeviceTokenRepository implements IDeviceTokenRepository {
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
 
+    if (!doc) {
+      throw new AppError('Failed to save device token.', 500);
+    }
+
     return mapDoc(doc);
   }
 
@@ -87,11 +86,11 @@ export class DeviceTokenRepository implements IDeviceTokenRepository {
       platform,
     });
 
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async findAllByPlatform(platform: DevicePlatform): Promise<DeviceToken[]> {
     const docs = await DeviceTokenModel.find({ platform });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 }

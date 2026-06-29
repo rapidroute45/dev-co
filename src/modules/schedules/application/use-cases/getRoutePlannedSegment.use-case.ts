@@ -8,6 +8,13 @@ import { enforceActorCity } from '../../../../shared/services/cityScope.service'
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { fetchOsrmDrivingPath } from '../utils/osrmDrivingPath';
 import { haversineMeters } from '../utils/haversine';
+import {
+  polylineEndsNearDestination,
+  readPickupCoords,
+  readStopDestinationCoords,
+} from '../utils/stopDestinationCoords';
+import { geocodeMissingRouteStops } from '../services/routeStopGeo.service';
+import { scheduleGeocodeContext } from '../utils/geocodeContext';
 
 type Actor = {
   id?: string;
@@ -15,20 +22,6 @@ type Actor = {
   assignedCity?: string | null;
   assignedCities?: string[] | null;
 };
-
-function readStopCoords(stop: {
-  destinationLat?: number | null;
-  destinationLng?: number | null;
-  lat?: number | null;
-  lng?: number | null;
-}) {
-  const lat = stop.destinationLat ?? stop.lat;
-  const lng = stop.destinationLng ?? stop.lng;
-  if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return null;
-  }
-  return { lat, lng };
-}
 
 export class GetRoutePlannedSegmentUseCase {
   constructor(
@@ -64,9 +57,21 @@ export class GetRoutePlannedSegmentUseCase {
       enforceActorCity(actor, schedule.city);
     }
 
+    if (schedule) {
+      await geocodeMissingRouteStops({
+        routeStopRepo: this.routeStopRepo,
+        routeId,
+        geocodeContext: scheduleGeocodeContext({
+          city: schedule.city,
+          state: schedule.state,
+          storeState: schedule.state,
+        }),
+      });
+    }
+
     const stops = await this.routeStopRepo.findByRouteId(routeId);
     const pickup = stops.find((s) => s.type === 'pickup');
-    const pickupCoords = pickup ? readStopCoords(pickup) : null;
+    const pickupCoords = pickup ? readPickupCoords(pickup) : null;
 
     const pendingDropoffs = stops
       .filter((s) => s.type === 'dropoff' && s.status === RouteStopStatus.PENDING)
@@ -83,14 +88,16 @@ export class GetRoutePlannedSegmentUseCase {
       };
     }
 
-    const destCoords = readStopCoords(nextStop);
+    const destCoords = readStopDestinationCoords(nextStop);
     if (!destCoords) {
       throw new AppError('Next stop has no map coordinates.', 400);
     }
 
     const storedPolyline = route.driverActiveSegmentPolyline ?? [];
     const storedMatchesStop =
-      route.driverRouteSegmentStopId === nextStop.id && storedPolyline.length >= 2;
+      route.driverRouteSegmentStopId === nextStop.id &&
+      storedPolyline.length >= 2 &&
+      polylineEndsNearDestination(storedPolyline, destCoords);
 
     if (storedMatchesStop) {
       let distanceM = 0;

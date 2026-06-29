@@ -12,6 +12,11 @@ import { UpdateProfileUseCase } from '../../application/use-cases/updateProfile.
 import { ChangePasswordUseCase } from '../../application/use-cases/changePassword.use-case';
 import { VerifyOpsElevationPinUseCase } from '../../application/use-cases/verifyOpsElevationPin.use-case';
 import { AppSettingsRepository } from '../../infrastructure/repositories/appSettings.repository';
+import {
+  loginRateLimit,
+  opsElevationRateLimit,
+  registerRateLimit,
+} from '../../../../shared/middleware/authRateLimit.middleware';
 
 const router = Router();
 const userRepo = new UserRepository();
@@ -34,12 +39,12 @@ const controller = new AuthController(
   verifyOpsElevationPinUseCase
 );
 
-router.post('/register', controller.register);
-router.post('/login', controller.login);
+router.post('/register', registerRateLimit, controller.register);
+router.post('/login', loginRateLimit, controller.login);
 router.get('/me', requireAuth({ allowPending: true }), controller.me);
 router.patch('/me', requireAuth({ allowPending: true }), controller.updateProfile);
 router.patch('/me/password', requireAuth({ allowPending: true }), controller.changePassword);
-router.post('/ops-elevation/verify', requireAuth(), controller.verifyOpsElevation);
+router.post('/ops-elevation/verify', requireAuth(), opsElevationRateLimit, controller.verifyOpsElevation);
 
 /** @deprecated Use GET /api/v1/users?pending=true */
 router.get('/pending', managerGuard, controller.getPending);

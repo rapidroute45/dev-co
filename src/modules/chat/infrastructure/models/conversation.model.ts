@@ -1,6 +1,24 @@
 import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
+export type ConversationKind = 'driver' | 'internal' | 'group';
+
+export interface ConversationDocument {
+  _id: Types.ObjectId;
+  managerId?: Types.ObjectId | null;
+  driverId?: Types.ObjectId | null;
+  kind?: ConversationKind;
+  participants: Types.ObjectId[];
+  title?: string | null;
+  createdBy?: Types.ObjectId | null;
+  admins: Types.ObjectId[];
+  lastMessageAt?: Date;
+  lastMessagePreview?: string;
+  lastSenderId?: Types.ObjectId | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const ConversationSchema = new Schema(
   {
     /** driver ↔ ops, or ops ↔ ops when kind is internal. Null for group chats. */
@@ -48,4 +66,7 @@ ConversationSchema.index(
   }
 );
 
-export const ConversationModel = createScopedModel('ChatConversation', ConversationSchema);
+export const ConversationModel = createScopedModel<ConversationDocument>(
+  'ChatConversation',
+  ConversationSchema
+);

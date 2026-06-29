@@ -5,6 +5,32 @@ import { RouteStopStatus } from '../../../../shared/constants/routeStopStatuses'
 export const ROUTE_STOP_TYPES = ['pickup', 'dropoff'] as const;
 export type RouteStopType = (typeof ROUTE_STOP_TYPES)[number];
 
+export interface RouteStopDocument {
+  _id: Types.ObjectId;
+  routeId: Types.ObjectId;
+  scheduleId: Types.ObjectId;
+  sequence: number;
+  type: RouteStopType;
+  name: string;
+  address: string;
+  status?: RouteStopStatus;
+  accessCode?: string | null;
+  deliveryPhotoUrl?: string | null;
+  returnReason?: string | null;
+  returnReasonCustom?: string | null;
+  completedAt?: Date | null;
+  lat?: number | null;
+  lng?: number | null;
+  destinationLat?: number | null;
+  destinationLng?: number | null;
+  placeId?: string | null;
+  proximityAnchorLat?: number | null;
+  proximityAnchorLng?: number | null;
+  proximityEnteredAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const RouteStopSchema = new Schema(
   {
     routeId: { type: Types.ObjectId, ref: 'Route', required: true, index: true },
@@ -25,15 +51,11 @@ const RouteStopSchema = new Schema(
     completedAt: { type: Date, default: null },
     lat: { type: Number, default: null },
     lng: { type: Number, default: null },
-    /** Geocoded delivery address (not overwritten by driver GPS). */
     destinationLat: { type: Number, default: null },
     destinationLng: { type: Number, default: null },
-    /** Optional external place reference (legacy). */
     placeId: { type: String, trim: true, default: null },
-    /** Driver GPS when they first entered the stop approach zone. */
     proximityAnchorLat: { type: Number, default: null },
     proximityAnchorLng: { type: Number, default: null },
-    /** When driver first entered the stop approach zone while pending. */
     proximityEnteredAt: { type: Date, default: null },
   },
   { timestamps: true }
@@ -41,4 +63,4 @@ const RouteStopSchema = new Schema(
 
 RouteStopSchema.index({ routeId: 1, sequence: 1 }, { unique: true });
 
-export const RouteStopModel = createScopedModel('RouteStop', RouteStopSchema);
+export const RouteStopModel = createScopedModel<RouteStopDocument>('RouteStop', RouteStopSchema);

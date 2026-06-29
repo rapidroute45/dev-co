@@ -20,3 +20,9 @@ export const STATIONARY_RADIUS_M = 80;
 export const STATIONARY_DWELL_MS = 2 * 60 * 1000;
 
 export const STATIONARY_DWELL_MINUTES = STATIONARY_DWELL_MS / 60_000;
+
+/** No location batch received for this long while route is in progress. */
+export const STALE_LOCATION_THRESHOLD_MS = 2 * 60 * 1000;
+
+/** Background scan interval for stale driver locations. */
+export const STALE_LOCATION_CHECK_INTERVAL_MS = 60 * 1000;

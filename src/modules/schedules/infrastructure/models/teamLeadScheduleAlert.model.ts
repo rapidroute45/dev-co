@@ -1,6 +1,26 @@
 import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
+export type TeamLeadScheduleAlertUpdateType = 'schedule_updated' | 'route_deleted';
+
+export interface TeamLeadScheduleAlertDocument {
+  _id: Types.ObjectId;
+  scheduleId: Types.ObjectId;
+  teamId: Types.ObjectId;
+  teamLeadId: Types.ObjectId;
+  scheduleDate: string;
+  city: string;
+  state: string;
+  storeName: string;
+  routeCount: number;
+  assignedRouteCount: number;
+  updateType?: TeamLeadScheduleAlertUpdateType;
+  deletedRouteName?: string | null;
+  seenAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const TeamLeadScheduleAlertSchema = new Schema(
   {
     scheduleId: { type: Types.ObjectId, ref: 'Schedule', required: true, index: true },
@@ -26,7 +46,7 @@ const TeamLeadScheduleAlertSchema = new Schema(
 TeamLeadScheduleAlertSchema.index({ scheduleId: 1, teamId: 1 }, { unique: true });
 TeamLeadScheduleAlertSchema.index({ teamLeadId: 1, seenAt: 1, scheduleDate: 1 });
 
-export const TeamLeadScheduleAlertModel = createScopedModel(
+export const TeamLeadScheduleAlertModel = createScopedModel<TeamLeadScheduleAlertDocument>(
   'TeamLeadScheduleAlert',
   TeamLeadScheduleAlertSchema
 );

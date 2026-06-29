@@ -1,6 +1,19 @@
 import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
+export interface PayrollAuditLogDocument {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  userName: string;
+  action: string;
+  entityType?: string | null;
+  entityId?: string | null;
+  oldValue?: unknown;
+  newValue?: unknown;
+  metadata?: unknown;
+  createdAt: Date;
+}
+
 const PayrollAuditLogSchema = new Schema(
   {
     userId: { type: Types.ObjectId, ref: 'User', required: true, index: true },
@@ -17,4 +30,7 @@ const PayrollAuditLogSchema = new Schema(
 
 PayrollAuditLogSchema.index({ createdAt: -1 });
 
-export const PayrollAuditLogModel = createScopedModel('PayrollAuditLog', PayrollAuditLogSchema);
+export const PayrollAuditLogModel = createScopedModel<PayrollAuditLogDocument>(
+  'PayrollAuditLog',
+  PayrollAuditLogSchema
+);

@@ -1,5 +1,17 @@
 import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
+import { DevicePlatform } from '../../domain/entities/deviceToken.entity';
+
+export interface DeviceTokenDocument {
+  _id: Types.ObjectId;
+  userId: Types.ObjectId;
+  token: string;
+  platform: DevicePlatform;
+  deviceId?: string | null;
+  lastSeenAt?: Date;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
 
 const DeviceTokenSchema = new Schema(
   {
@@ -14,4 +26,7 @@ const DeviceTokenSchema = new Schema(
 
 DeviceTokenSchema.index({ userId: 1, platform: 1 });
 
-export const DeviceTokenModel = createScopedModel('DeviceToken', DeviceTokenSchema);
+export const DeviceTokenModel = createScopedModel<DeviceTokenDocument>(
+  'DeviceToken',
+  DeviceTokenSchema
+);

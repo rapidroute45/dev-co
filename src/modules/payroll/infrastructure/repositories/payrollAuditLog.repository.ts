@@ -1,4 +1,8 @@
-import { PayrollAuditLogModel } from '../models/payrollAuditLog.model';
+import { Types } from 'mongoose';
+import {
+  PayrollAuditLogDocument,
+  PayrollAuditLogModel,
+} from '../models/payrollAuditLog.model';
 
 export type PayrollAuditLogRecord = {
   id: string;
@@ -13,6 +17,21 @@ export type PayrollAuditLogRecord = {
   createdAt: Date;
 };
 
+function mapDoc(doc: PayrollAuditLogDocument): PayrollAuditLogRecord {
+  return {
+    id: doc._id.toString(),
+    userId: doc.userId.toString(),
+    userName: doc.userName,
+    action: doc.action,
+    entityType: doc.entityType ?? null,
+    entityId: doc.entityId ?? null,
+    oldValue: doc.oldValue,
+    newValue: doc.newValue,
+    metadata: doc.metadata,
+    createdAt: doc.createdAt,
+  };
+}
+
 export class PayrollAuditLogRepository {
   async append(entry: {
     userId: string;
@@ -25,7 +44,7 @@ export class PayrollAuditLogRepository {
     metadata?: unknown;
   }): Promise<PayrollAuditLogRecord> {
     const doc = await PayrollAuditLogModel.create({
-      userId: entry.userId,
+      userId: new Types.ObjectId(entry.userId),
       userName: entry.userName,
       action: entry.action,
       entityType: entry.entityType ?? null,
@@ -34,18 +53,7 @@ export class PayrollAuditLogRepository {
       newValue: entry.newValue ?? null,
       metadata: entry.metadata ?? null,
     });
-    return {
-      id: doc._id.toString(),
-      userId: doc.userId.toString(),
-      userName: doc.userName,
-      action: doc.action,
-      entityType: doc.entityType ?? null,
-      entityId: doc.entityId ?? null,
-      oldValue: doc.oldValue,
-      newValue: doc.newValue,
-      metadata: doc.metadata,
-      createdAt: doc.createdAt,
-    };
+    return mapDoc(doc);
   }
 
   async list(params?: {
@@ -58,17 +66,6 @@ export class PayrollAuditLogRepository {
     const docs = await PayrollAuditLogModel.find(query)
       .sort({ createdAt: -1 })
       .limit(params?.limit ?? 100);
-    return docs.map((doc) => ({
-      id: doc._id.toString(),
-      userId: doc.userId.toString(),
-      userName: doc.userName,
-      action: doc.action,
-      entityType: doc.entityType ?? null,
-      entityId: doc.entityId ?? null,
-      oldValue: doc.oldValue,
-      newValue: doc.newValue,
-      metadata: doc.metadata,
-      createdAt: doc.createdAt,
-    }));
+    return docs.map(mapDoc);
   }
 }

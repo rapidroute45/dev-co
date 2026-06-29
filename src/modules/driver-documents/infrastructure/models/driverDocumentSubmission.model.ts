@@ -1,17 +1,34 @@
-import mongoose from 'mongoose';
+import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { DocumentSubmissionStatus } from '../../../../shared/constants/documentStatuses';
 
-const driverDocumentSubmissionSchema = new mongoose.Schema(
+export interface DriverDocumentSubmissionDocument {
+  _id: Types.ObjectId;
+  driverId: Types.ObjectId;
+  requirementId: Types.ObjectId;
+  status: DocumentSubmissionStatus;
+  referenceNumber?: string | null;
+  expiryDate?: Date | null;
+  fileUrl?: string | null;
+  fileMimeType?: string | null;
+  verifiedBy?: Types.ObjectId | null;
+  verifiedAt?: Date | null;
+  rejectionReason?: string | null;
+  uploadedAt?: Date | null;
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
+const driverDocumentSubmissionSchema = new Schema(
   {
     driverId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Types.ObjectId,
       ref: 'User',
       required: true,
       index: true,
     },
     requirementId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: Types.ObjectId,
       ref: 'DocumentRequirement',
       required: true,
     },
@@ -24,7 +41,7 @@ const driverDocumentSubmissionSchema = new mongoose.Schema(
     expiryDate: { type: Date, default: null },
     fileUrl: { type: String, default: null },
     fileMimeType: { type: String, default: null },
-    verifiedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User', default: null },
+    verifiedBy: { type: Types.ObjectId, ref: 'User', default: null },
     verifiedAt: { type: Date, default: null },
     rejectionReason: { type: String, default: null },
     uploadedAt: { type: Date, default: null },
@@ -37,7 +54,7 @@ driverDocumentSubmissionSchema.index(
   { unique: true }
 );
 
-export const DriverDocumentSubmissionModel = createScopedModel(
+export const DriverDocumentSubmissionModel = createScopedModel<DriverDocumentSubmissionDocument>(
   'DriverDocumentSubmission',
   driverDocumentSubmissionSchema
 );

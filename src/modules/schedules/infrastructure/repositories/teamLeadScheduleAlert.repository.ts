@@ -3,25 +3,12 @@ import {
   TeamLeadScheduleAlertRecord,
   UpsertTeamLeadScheduleAlertInput,
 } from '../../domain/interfaces/team-lead-schedule-alert-repository.interface';
-import { TeamLeadScheduleAlertModel } from '../models/teamLeadScheduleAlert.model';
+import {
+  TeamLeadScheduleAlertDocument,
+  TeamLeadScheduleAlertModel,
+} from '../models/teamLeadScheduleAlert.model';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  scheduleId: { toString(): string };
-  teamId: { toString(): string };
-  teamLeadId: { toString(): string };
-  scheduleDate: string;
-  city: string;
-  state: string;
-  storeName: string;
-  routeCount: number;
-  assignedRouteCount: number;
-  updateType?: 'schedule_updated' | 'route_deleted';
-  deletedRouteName?: string | null;
-  seenAt?: Date | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): TeamLeadScheduleAlertRecord {
+function mapDoc(doc: TeamLeadScheduleAlertDocument): TeamLeadScheduleAlertRecord {
   return {
     id: doc._id.toString(),
     scheduleId: doc.scheduleId.toString(),
@@ -61,7 +48,8 @@ export class TeamLeadScheduleAlertRepository implements ITeamLeadScheduleAlertRe
       },
       { upsert: true, returnDocument: 'after', setDefaultsOnInsert: true }
     );
-    return mapDoc(doc!);
+    if (!doc) throw new Error('Failed to save team lead schedule alert');
+    return mapDoc(doc);
   }
 
   async deleteByScheduleAndTeam(scheduleId: string, teamId: string): Promise<void> {
@@ -77,7 +65,7 @@ export class TeamLeadScheduleAlertRepository implements ITeamLeadScheduleAlertRe
       teamLeadId,
       seenAt: null,
     }).sort({ scheduleDate: 1, updatedAt: -1 });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async acknowledge(scheduleId: string, teamLeadId: string): Promise<boolean> {

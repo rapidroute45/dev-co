@@ -5,21 +5,8 @@ import { IRouteRepository } from '../../domain/interfaces/route-repository.inter
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { fetchGoogleDrivingPath } from '../utils/googleDirectionsPath';
 import { haversineMeters } from '../utils/haversine';
+import { readStopDestinationCoords } from '../utils/stopDestinationCoords';
 import { emitDriverSegmentRerouted } from '../../../chat/socket/chat.socket';
-
-function readStopCoords(stop: {
-  destinationLat?: number | null;
-  destinationLng?: number | null;
-  lat?: number | null;
-  lng?: number | null;
-}) {
-  const lat = stop.destinationLat ?? stop.lat;
-  const lng = stop.destinationLng ?? stop.lng;
-  if (lat == null || lng == null || !Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return null;
-  }
-  return { lat, lng };
-}
 
 export class RerouteRouteSegmentUseCase {
   constructor(
@@ -49,7 +36,7 @@ export class RerouteRouteSegmentUseCase {
       throw new AppError('No pending stop to reroute toward.', 400);
     }
 
-    const destCoords = readStopCoords(nextStop);
+    const destCoords = readStopDestinationCoords(nextStop);
     if (!destCoords) {
       throw new AppError('Next stop has no map coordinates.', 400);
     }

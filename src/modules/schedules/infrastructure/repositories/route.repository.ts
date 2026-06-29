@@ -5,60 +5,12 @@ import {
   RouteUpdateData,
 } from '../../domain/interfaces/route-repository.interface';
 import { parseScheduleDate } from '../../application/utils/scheduleDate';
-import { RouteModel } from '../models/route.model';
+import { RouteModel, RouteDocument } from '../models/route.model';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
-import { DeliveryVerification } from '../../../../shared/constants/deliveryVerification';
-import { OpsVerificationStatus } from '../../../../shared/constants/opsVerification';
 import { ROUTE_ACTIVE_STATUSES } from '../../../../shared/constants/routeStatuses';
 import { RouteCategory } from '../../../../shared/constants/routeCategories';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  scheduleId: { toString(): string };
-  scheduleDate: Date;
-  teamId: { toString(): string };
-  driverId?: { toString(): string } | null;
-  routeName?: string | null;
-  routeCategory?: string;
-  location?: string | null;
-  vehicleType?: string | null;
-  mileage?: number | null;
-  stops?: number | null;
-  arrivalTime: string;
-  departureTime: string;
-  arrivalMinutes: number;
-  departureMinutes: number;
-  status: string;
-  assignedBy: { toString(): string };
-  notes?: string | null;
-  totalMiles?: number | null;
-  driverLat?: number | null;
-  driverLng?: number | null;
-  driverLocationAt?: Date | null;
-  driverLocationIngestedAt?: Date | null;
-  driverLocationBackgroundSharing?: boolean;
-  startedAt?: Date | null;
-  completedAt?: Date | null;
-  deliveryVerification?: string | null;
-  overtimeHours?: number | null;
-  opsVerificationStatus?: string | null;
-  teamVerifiedAt?: Date | null;
-  teamVerifiedBy?: { toString(): string } | null;
-  managerVerifiedAt?: Date | null;
-  managerVerifiedBy?: { toString(): string } | null;
-  driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
-  driverRouteSegmentStopId?: string | null;
-  driverRouteProgressIndex?: number | null;
-  driverActiveSegmentPolyline?: { lat: number; lng: number }[];
-  driverSegmentVersion?: number | null;
-  driverSegmentReroutedAt?: Date | null;
-  driverDwellAnchorLat?: number | null;
-  driverDwellAnchorLng?: number | null;
-  driverDwellStartedAt?: Date | null;
-  driverDwellAlertSentAt?: Date | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): Route {
+function mapDoc(doc: RouteDocument): Route {
   return new Route({
     id: doc._id.toString(),
     scheduleId: doc.scheduleId.toString(),
@@ -66,7 +18,7 @@ function mapDoc(doc: {
     teamId: doc.teamId.toString(),
     driverId: doc.driverId?.toString() ?? null,
     routeName: doc.routeName ?? null,
-    routeCategory: (doc.routeCategory as RouteCategory) ?? RouteCategory.SMALL,
+    routeCategory: doc.routeCategory ?? RouteCategory.SMALL,
     location: doc.location ?? null,
     vehicleType: doc.vehicleType ?? null,
     mileage: doc.mileage ?? null,
@@ -75,7 +27,7 @@ function mapDoc(doc: {
     departureTime: doc.departureTime,
     arrivalMinutes: doc.arrivalMinutes,
     departureMinutes: doc.departureMinutes,
-    status: doc.status as RouteStatus,
+    status: doc.status,
     assignedBy: doc.assignedBy.toString(),
     notes: doc.notes ?? null,
     totalMiles: doc.totalMiles ?? null,
@@ -86,9 +38,9 @@ function mapDoc(doc: {
     driverLocationBackgroundSharing: Boolean(doc.driverLocationBackgroundSharing),
     startedAt: doc.startedAt ?? null,
     completedAt: doc.completedAt ?? null,
-    deliveryVerification: (doc.deliveryVerification as DeliveryVerification) ?? null,
+    deliveryVerification: doc.deliveryVerification ?? null,
     overtimeHours: doc.overtimeHours ?? 0,
-    opsVerificationStatus: (doc.opsVerificationStatus as OpsVerificationStatus) ?? null,
+    opsVerificationStatus: doc.opsVerificationStatus ?? null,
     teamVerifiedAt: doc.teamVerifiedAt ?? null,
     teamVerifiedBy: doc.teamVerifiedBy?.toString() ?? null,
     managerVerifiedAt: doc.managerVerifiedAt ?? null,
@@ -110,6 +62,8 @@ function mapDoc(doc: {
     driverDwellAnchorLng: doc.driverDwellAnchorLng ?? null,
     driverDwellStartedAt: doc.driverDwellStartedAt ?? null,
     driverDwellAlertSentAt: doc.driverDwellAlertSentAt ?? null,
+    driverOffRouteAlertSentAt: doc.driverOffRouteAlertSentAt ?? null,
+    driverLocationStaleAlertSentAt: doc.driverLocationStaleAlertSentAt ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
@@ -140,12 +94,20 @@ export class RouteRepository implements IRouteRepository {
       RouteModel.countDocuments(query),
     ]);
 
-    return { items: docs.map(mapDoc), total };
+    return { items: docs.map((doc) => mapDoc(doc)), total };
   }
 
   async findManyByScheduleId(scheduleId: string): Promise<Route[]> {
     const docs = await RouteModel.find({ scheduleId }).sort({ arrivalMinutes: 1 });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
+  }
+
+  async findInProgressWithDriver(): Promise<Route[]> {
+    const docs = await RouteModel.find({
+      status: RouteStatus.IN_PROGRESS,
+      driverId: { $ne: null },
+    }).sort({ updatedAt: -1 });
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async countByScheduleId(scheduleId: string): Promise<number> {
@@ -229,7 +191,7 @@ export class RouteRepository implements IRouteRepository {
       driverId,
       status: { $in: [RouteStatus.PENDING, RouteStatus.ASSIGNED] },
     }).sort({ scheduleDate: 1, arrivalMinutes: 1 });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async findManyByDriverId(
@@ -248,7 +210,7 @@ export class RouteRepository implements IRouteRepository {
       if (filters.toDate) (query.scheduleDate as Record<string, Date>).$lte = filters.toDate;
     }
     const docs = await RouteModel.find(query).sort({ scheduleDate: 1, arrivalMinutes: 1 });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async findCompletedByDriverId(
@@ -265,7 +227,7 @@ export class RouteRepository implements IRouteRepository {
       if (filters.toDate) (query.scheduleDate as Record<string, Date>).$lte = filters.toDate;
     }
     const docs = await RouteModel.find(query).sort({ scheduleDate: -1, arrivalMinutes: 1 });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async findCompletedByTeamInRange(
@@ -279,7 +241,7 @@ export class RouteRepository implements IRouteRepository {
       driverId: { $ne: null },
       scheduleDate: { $gte: fromDate, $lte: toDate },
     }).sort({ scheduleDate: 1, arrivalMinutes: 1 });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async findCompletedByTeamExcludingRouteIds(
@@ -310,7 +272,7 @@ export class RouteRepository implements IRouteRepository {
       query._id = { $nin: excludeRouteIds };
     }
     const docs = await RouteModel.find(query).sort({ scheduleDate: 1, arrivalMinutes: 1 });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async findCompletedByScheduleIdsInPeriod(
@@ -328,7 +290,7 @@ export class RouteRepository implements IRouteRepository {
       query.scheduleDate = { $gte: periodStart, $lte: periodEnd };
     }
     const docs = await RouteModel.find(query).sort({ scheduleDate: -1, arrivalMinutes: 1 });
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async findOverlappingForDriver(params: {
@@ -350,7 +312,7 @@ export class RouteRepository implements IRouteRepository {
     }
 
     const docs = await RouteModel.find(query);
-    return docs.map(mapDoc);
+    return docs.map((doc) => mapDoc(doc));
   }
 
   async save(route: Route): Promise<Route> {

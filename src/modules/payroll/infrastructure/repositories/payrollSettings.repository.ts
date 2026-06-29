@@ -1,18 +1,14 @@
+import { Types } from 'mongoose';
 import {
   PayrollSettings,
   PayrollSettingsProps,
 } from '../../domain/entities/payrollSettings.entity';
-import { PayrollSettingsModel } from '../models/payrollSettings.model';
+import {
+  PayrollSettingsDocument,
+  PayrollSettingsModel,
+} from '../models/payrollSettings.model';
 
-function mapDoc(doc: {
-  _id: { toString(): string };
-  smallRouteRate: number;
-  mediumRouteRate: number;
-  fullRouteRate: number;
-  updatedBy?: { toString(): string } | null;
-  createdAt?: Date;
-  updatedAt?: Date;
-}): PayrollSettings {
+function mapDoc(doc: PayrollSettingsDocument): PayrollSettings {
   return new PayrollSettings({
     id: doc._id.toString(),
     smallRouteRate: doc.smallRouteRate,
@@ -52,7 +48,7 @@ export class PayrollSettingsRepository {
         smallRouteRate: patch.smallRouteRate,
         mediumRouteRate: patch.mediumRouteRate,
         fullRouteRate: patch.fullRouteRate,
-        updatedBy: patch.updatedBy,
+        updatedBy: new Types.ObjectId(patch.updatedBy),
       },
       { returnDocument: 'after' }
     );

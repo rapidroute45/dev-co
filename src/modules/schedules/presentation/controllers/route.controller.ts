@@ -325,6 +325,7 @@ export class RouteController {
         }>;
         plannedStopId?: string;
         progressIndex?: number;
+        offRoute?: boolean;
       };
       const rawLocations = Array.isArray(body.locations) ? body.locations : [];
       const points = rawLocations.map((point) => ({
@@ -341,6 +342,7 @@ export class RouteController {
         {
           plannedStopId: body.plannedStopId,
           progressIndex: body.progressIndex,
+          offRoute: body.offRoute,
         }
       );
       res.status(200).json({ success: true, data });
