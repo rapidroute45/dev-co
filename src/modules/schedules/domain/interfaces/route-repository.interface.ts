@@ -36,6 +36,10 @@ export interface RouteUpdateData {
   managerVerifiedAt?: Date | null;
   managerVerifiedBy?: string | null;
   driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
+  driverDwellAnchorLat?: number | null;
+  driverDwellAnchorLng?: number | null;
+  driverDwellStartedAt?: Date | null;
+  driverDwellAlertSentAt?: Date | null;
 }
 
 export interface RouteListFilters {

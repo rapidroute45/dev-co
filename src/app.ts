@@ -31,7 +31,7 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Dispatch-Environment'],
 }));
 
-app.use(express.json());
+app.use(express.json({ limit: '2mb' }));
 app.use(cookieParser());
 app.use(dbEnvironmentMiddleware);
 app.use('/uploads', express.static(UPLOADS_DIR));

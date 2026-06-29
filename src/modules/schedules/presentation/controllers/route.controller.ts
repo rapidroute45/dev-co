@@ -12,6 +12,7 @@ import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.us
 import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
+import { GetRouteTrackingUseCase } from '../../application/use-cases/getRouteTracking.use-case';
 import { ListLiveRoutesUseCase } from '../../application/use-cases/listLiveRoutes.use-case';
 import { sanitizeRoutePayloadForRole } from '../../../../shared/utils/routeCategoryAccess';
 import { UserRole } from '../../../../shared/constants/roles';
@@ -41,6 +42,7 @@ export class RouteController {
     private listMyCompletedRoutesUseCase: ListMyCompletedRoutesUseCase,
     private startRouteUseCase: StartRouteUseCase,
     private routeDeliveryUseCase: RouteDeliveryUseCase,
+    private getRouteTrackingUseCase: GetRouteTrackingUseCase,
     private listLiveRoutesUseCase: ListLiveRoutesUseCase
   ) {}
 
@@ -235,7 +237,7 @@ export class RouteController {
 
   getTracking = async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const data = await this.routeDeliveryUseCase.getTracking(
+      const data = await this.getRouteTrackingUseCase.execute(
         String(req.params.id),
         req.user
       );
@@ -265,19 +267,12 @@ export class RouteController {
   reportLocation = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.id) return next(new AppError('Unauthorized', 401));
-      const { lat, lng, backgroundSharing, recordedAt } = req.body as {
-        lat?: number;
-        lng?: number;
-        backgroundSharing?: boolean;
-        recordedAt?: string;
-      };
-      const data = await this.routeDeliveryUseCase.reportLocation(
+      const { lat, lng } = req.body as { lat?: number; lng?: number };
+      const data = await this.routeDeliveryUseCase.reportCurrentLocation(
         String(req.params.id),
         req.user.id,
         Number(lat),
-        Number(lng),
-        Boolean(backgroundSharing),
-        recordedAt
+        Number(lng)
       );
       res.status(200).json({ success: true, data });
     } catch (error) {
@@ -292,39 +287,29 @@ export class RouteController {
         locations?: Array<{
           lat?: number;
           lng?: number;
-          latitude?: number;
-          longitude?: number;
           recordedAt?: string;
-          timestamp?: string;
         }>;
-        location?: Array<{
-          lat?: number;
-          lng?: number;
-          latitude?: number;
-          longitude?: number;
-          recordedAt?: string;
-          timestamp?: string;
-        }>;
-        backgroundSharing?: boolean;
       };
-      const rawLocations = Array.isArray(body.locations)
-        ? body.locations
-        : Array.isArray(body.location)
-          ? body.location
-          : [];
-      const points = rawLocations.map((p) => ({
-        lat: Number(p?.lat ?? p?.latitude),
-        lng: Number(p?.lng ?? p?.longitude),
-        recordedAt: p?.recordedAt ?? p?.timestamp,
+      const rawLocations = Array.isArray(body.locations) ? body.locations : [];
+      const points = rawLocations.map((point) => ({
+        lat: Number(point?.lat),
+        lng: Number(point?.lng),
+        recordedAt: point?.recordedAt,
       }));
       const data = await this.routeDeliveryUseCase.reportLocationBatch(
         String(req.params.id),
         req.user.id,
-        points,
-        Boolean(body.backgroundSharing)
+        points
       );
       res.status(200).json({ success: true, data });
     } catch (error) {
+      console.error('[routes] reportLocationBatch failed', {
+        routeId: req.params.id,
+        pointCount: Array.isArray((req.body as { locations?: unknown[] })?.locations)
+          ? (req.body as { locations: unknown[] }).locations.length
+          : 0,
+        error,
+      });
       next(error);
     }
   };

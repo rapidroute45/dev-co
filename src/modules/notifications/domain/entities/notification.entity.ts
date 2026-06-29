@@ -6,8 +6,6 @@ export enum NotificationType {
   DOCUMENT_UPDATED = 'document_updated',
   DOCUMENT_VERIFIED = 'document_verified',
   DOCUMENT_REJECTED = 'document_rejected',
-  DRIVER_DWELLING = 'driver_dwelling',
-  STOP_AUTO_COMPLETED = 'stop_auto_completed',
   PAYROLL_GENERATED = 'payroll_generated',
   PAYROLL_SENT = 'payroll_sent',
   PAYROLL_APPROVED = 'payroll_approved',
@@ -18,6 +16,8 @@ export enum NotificationType {
   ROUTE_CREATED = 'route_created',
   ROUTE_UPDATED = 'route_updated',
   DISPATCH_TEAM_UPDATED = 'dispatch_team_updated',
+  DRIVER_DWELLING = 'driver_dwelling',
+  STOP_AUTO_COMPLETED = 'stop_auto_completed',
 }
 
 export interface NotificationProps {

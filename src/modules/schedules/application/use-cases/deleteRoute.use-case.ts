@@ -1,7 +1,6 @@
 import { AppError } from '../../../../shared/errors/app-error';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
-import { DriverLocationRepository } from '../../infrastructure/repositories/driverLocation.repository';
 import { IScheduleRepository } from '../../domain/interfaces/schedule-repository.interface';
 import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
 import { emitRouteUpdated } from '../../../chat/socket/chat.socket';
@@ -11,7 +10,6 @@ export class DeleteRouteUseCase {
   constructor(
     private routeRepo: IRouteRepository,
     private routeStopRepo: IRouteStopRepository,
-    private driverLocationRepo: DriverLocationRepository,
     private scheduleRepo: IScheduleRepository,
     private teamLeadAlertService: TeamLeadScheduleAlertService
   ) {}
@@ -24,7 +22,6 @@ export class DeleteRouteUseCase {
     if (schedule) enforceActorCity(actor, schedule.city);
 
     await this.routeStopRepo.deleteByRouteId(routeId);
-    await this.driverLocationRepo.deleteByRouteId(routeId);
     const deleted = await this.routeRepo.delete(routeId);
     if (!deleted) throw new AppError('Failed to delete route.', 500);
 

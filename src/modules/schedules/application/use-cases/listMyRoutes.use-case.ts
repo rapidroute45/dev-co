@@ -50,14 +50,6 @@ export class ListMyRoutesUseCase {
 
         return {
           ...routeDto,
-          driverLocation:
-            route.driverLat != null && route.driverLng != null
-              ? {
-                  lat: route.driverLat,
-                  lng: route.driverLng,
-                  updatedAt: route.driverLocationAt,
-                }
-              : null,
           schedule: schedule
             ? {
                 id: schedule.id,

@@ -6,7 +6,6 @@ import { AuthenticatedUser } from '../../../shared/middleware/auth.middleware';
 import { UserRole } from '../../../shared/constants/roles';
 import { ChatService } from '../application/services/chat.service';
 import { getActorAssignedCities, normalizeCity } from '../../../shared/services/cityScope.service';
-import { trackingCityRoom } from '../../../shared/utils/trackingCityKey';
 import { resolveDbEnvironment, withDbEnvironment } from '../../../config/dbContext';
 
 export type ChatSocketUser = AuthenticatedUser;
@@ -29,14 +28,6 @@ function roomForUser(userId: string) {
 
 function roomManagers() {
   return 'role:managers';
-}
-
-function roomDispatchOpsTracking() {
-  return 'tracking:dispatch-ops';
-}
-
-function roomTrackingCityName(city: string) {
-  return `tracking:city:${normalizeCity(city)}`;
 }
 
 export function initChatSocket(httpServer: HttpServer, chatService: ChatService) {
@@ -73,12 +64,11 @@ export function initChatSocket(httpServer: HttpServer, chatService: ChatService)
 
     if (user.role && MANAGER_ROLES.includes(user.role)) {
       void socket.join(roomManagers());
-      void socket.join(roomDispatchOpsTracking());
     }
 
     if (user.role === UserRole.DISPATCH_TEAM) {
       for (const city of getActorAssignedCities(user)) {
-        void socket.join(roomTrackingCityName(city));
+        void socket.join(`dispatch:city:${normalizeCity(city)}`);
       }
     }
 
@@ -256,68 +246,43 @@ export function emitRouteUpdated(payload: {
     io.to(roomForUser(driverId)).emit('route:updated', event);
   }
 
-  io.to(roomDispatchOpsTracking()).emit('route:updated', event);
+  io.to(roomManagers()).emit('route:updated', event);
 }
 
-export type DriverLocationUpdatedPayload = {
+export type DriverCurrentLocationPayload = {
   routeId: string;
   scheduleId: string;
   driverId: string;
-  driverName: string;
-  routeName: string | null;
   lat: number;
   lng: number;
   recordedAt: string;
-  ingestedAt?: string;
-  status: string;
-  city: string;
-  state: string;
-  storeName?: string | null;
-  progress?: {
-    totalDropoffs: number;
-    completedDropoffs: number;
-    returnedDropoffs: number;
-    pendingDropoffs: number;
-  };
-  autoCompletedStops?: { stopId: string; stopName: string }[];
-  routeCompleted?: boolean;
+  trailPoints?: { lat: number; lng: number; recordedAt: string }[];
   dwell?: {
     active: boolean;
     minutes: number;
+    startedAt: string;
+    thresholdMinutes: number;
     alertSent: boolean;
-    thresholdMinutes?: number;
-    startedAt?: string | null;
-  };
-  backgroundSharing?: boolean;
-  /** Full GPS segment from a batch upload so dispatch can draw the actual path. */
-  trailPoints?: { lat: number; lng: number; recordedAt: string }[];
+  } | null;
 };
 
-export function emitDriverLocationUpdated(payload: DriverLocationUpdatedPayload) {
-  if (!io) return;
-
-  io.to(roomDispatchOpsTracking()).emit('driver:location', payload);
-  io.to(roomTrackingCityName(payload.city)).emit('driver:location', payload);
-  io.to(trackingCityRoom(payload.city, payload.state)).emit('driver:location', payload);
-}
-
-export type DriverStationaryAlertPayload = {
+export type DriverStationaryPayload = {
   routeId: string;
   scheduleId: string;
   driverId: string;
-  driverName: string;
-  dwellMinutes: number;
   lat: number;
   lng: number;
-  city: string;
-  state: string;
-  routeName: string | null;
+  dwellMinutes: number;
+  driverName?: string;
 };
 
-export function emitDriverStationaryAlert(payload: DriverStationaryAlertPayload) {
+/** Live driver location for dispatch tracking maps. */
+export function emitDriverCurrentLocation(payload: DriverCurrentLocationPayload) {
   if (!io) return;
+  io.to(roomManagers()).emit('driver:location', payload);
+}
 
-  io.to(roomDispatchOpsTracking()).emit('driver:stationary', payload);
-  io.to(roomTrackingCityName(payload.city)).emit('driver:stationary', payload);
-  io.to(trackingCityRoom(payload.city, payload.state)).emit('driver:stationary', payload);
+export function emitDriverStationary(payload: DriverStationaryPayload) {
+  if (!io) return;
+  io.to(roomManagers()).emit('driver:stationary', payload);
 }

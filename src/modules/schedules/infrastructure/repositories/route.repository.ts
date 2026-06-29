@@ -47,6 +47,10 @@ function mapDoc(doc: {
   managerVerifiedAt?: Date | null;
   managerVerifiedBy?: { toString(): string } | null;
   driverRoutePath?: { lat: number; lng: number; recordedAt: Date }[];
+  driverDwellAnchorLat?: number | null;
+  driverDwellAnchorLng?: number | null;
+  driverDwellStartedAt?: Date | null;
+  driverDwellAlertSentAt?: Date | null;
   createdAt?: Date;
   updatedAt?: Date;
 }): Route {
@@ -89,6 +93,10 @@ function mapDoc(doc: {
       lng: point.lng,
       recordedAt: point.recordedAt,
     })),
+    driverDwellAnchorLat: doc.driverDwellAnchorLat ?? null,
+    driverDwellAnchorLng: doc.driverDwellAnchorLng ?? null,
+    driverDwellStartedAt: doc.driverDwellStartedAt ?? null,
+    driverDwellAlertSentAt: doc.driverDwellAlertSentAt ?? null,
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   });
