@@ -1,4 +1,4 @@
-export const MAX_STORED_ROUTE_PATH_POINTS = 500;
+export const MAX_STORED_ROUTE_PATH_POINTS = 5000;
 export const MAX_TRAIL_EMIT_POINTS = 60;
 
 type RoutePathPoint = { lat: number; lng: number; recordedAt: Date };

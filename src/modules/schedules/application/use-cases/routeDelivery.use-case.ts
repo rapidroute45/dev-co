@@ -373,12 +373,16 @@ export class RouteDeliveryUseCase {
     }
 
     const recordedAt = new Date();
+    const startPoint = { lat, lng, recordedAt };
+    const driverRoutePath = mergeRoutePathPoints(route.driverRoutePath ?? [], [startPoint]);
+
     await this.routeRepo.update(routeId, {
       driverLat: lat,
       driverLng: lng,
       driverLocationAt: recordedAt,
       driverLocationIngestedAt: recordedAt,
       driverLocationBackgroundSharing: false,
+      driverRoutePath,
     });
 
     emitDriverCurrentLocation({
@@ -388,6 +392,13 @@ export class RouteDeliveryUseCase {
       lat,
       lng,
       recordedAt: recordedAt.toISOString(),
+      trailPoints: [
+        {
+          lat,
+          lng,
+          recordedAt: recordedAt.toISOString(),
+        },
+      ],
     });
 
     return {

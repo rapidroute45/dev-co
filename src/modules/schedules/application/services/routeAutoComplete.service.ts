@@ -60,7 +60,6 @@ export class RouteAutoCompleteService {
       startedAt,
       completedAt,
       overtimeHours,
-      driverRoutePath: [],
       driverDwellAnchorLat: null,
       driverDwellAnchorLng: null,
       driverDwellStartedAt: null,
