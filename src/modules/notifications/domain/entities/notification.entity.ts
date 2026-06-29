@@ -1,5 +1,6 @@
 export enum NotificationType {
   ROUTE_ASSIGNED = 'route_assigned',
+  ROUTE_NEEDS_DRIVER = 'route_needs_driver',
   ROUTE_OFFER = 'route_offer',
   DOCUMENT_REQUIRED = 'document_required',
   DOCUMENT_UPDATED = 'document_updated',
@@ -11,6 +12,12 @@ export enum NotificationType {
   PAYROLL_SENT = 'payroll_sent',
   PAYROLL_APPROVED = 'payroll_approved',
   ROUTE_OPS_REVIEW = 'route_ops_review',
+  CHAT_MESSAGE = 'chat_message',
+  SCHEDULE_CREATED = 'schedule_created',
+  SCHEDULE_UPDATED = 'schedule_updated',
+  ROUTE_CREATED = 'route_created',
+  ROUTE_UPDATED = 'route_updated',
+  DISPATCH_TEAM_UPDATED = 'dispatch_team_updated',
 }
 
 export interface NotificationProps {

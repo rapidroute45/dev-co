@@ -8,15 +8,28 @@ import { mapScheduleToResponse } from '../mappers/scheduleResponse.mapper';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { CityActor, enforceActorCity } from '../../../../shared/services/cityScope.service';
+import { UserRole } from '../../../../shared/constants/roles';
+import { NotificationService } from '../../../notifications/application/services/notification.service';
+import { IUserRepository } from '../../../auth/domain/interfaces/user-repository.interface';
+import { resolveManagerAndAdminRecipientIds } from '../../../../shared/services/routeOpsRecipients.service';
+import { resolveDisplayName } from '../../../../shared/utils/displayName';
+import { formatScheduleDate } from '../utils/scheduleDate';
 
 export class UpdateScheduleUseCase {
   constructor(
     private scheduleRepo: IScheduleRepository,
     private storeRepo: IStoreRepository,
-    private routeRepo: IRouteRepository
+    private routeRepo: IRouteRepository,
+    private notificationService: NotificationService,
+    private userRepo: IUserRepository
   ) {}
 
-  async execute(scheduleId: string, dto: Record<string, unknown>, actor?: CityActor) {
+  async execute(
+    scheduleId: string,
+    dto: Record<string, unknown>,
+    actor?: CityActor,
+    updatedByUserId?: string
+  ) {
     const existing = await this.scheduleRepo.findById(scheduleId);
     if (!existing) throw new AppError('Schedule not found.', 404);
     enforceActorCity(actor, existing.city);
@@ -77,6 +90,28 @@ export class UpdateScheduleUseCase {
 
     const store = await this.storeRepo.findById(updated.storeId);
     const routes = await this.routeRepo.findManyByScheduleId(scheduleId);
+
+    if (
+      actor?.role === UserRole.DISPATCH_TEAM &&
+      Object.keys(patch).length > 0 &&
+      updatedByUserId
+    ) {
+      const actorUser = await this.userRepo.findById(updatedByUserId);
+      const actorName = resolveDisplayName(actorUser?.fullName, actorUser?.email ?? 'Dispatch team');
+      const recipientIds = await resolveManagerAndAdminRecipientIds(this.userRepo, [
+        updatedByUserId,
+      ]);
+      await this.notificationService.notifyScheduleUpdated({
+        recipientIds,
+        scheduleId,
+        storeName: store?.storeName ?? 'Store',
+        city: updated.city,
+        state: updated.state,
+        scheduleDate: formatScheduleDate(updated.date),
+        actorName,
+      });
+    }
+
     return mapScheduleToResponse(
       updated,
       store ? mapStoreToResponse(store) : null,

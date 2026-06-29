@@ -75,4 +75,31 @@ export class NotificationRepository implements INotificationRepository {
     );
     return doc ? mapDoc(doc) : null;
   }
+
+  async markPushSentForRecipients(
+    recipientIds: string[],
+    type: NotificationType,
+    withinMs = 120_000
+  ): Promise<number> {
+    const ids = [...new Set(recipientIds.filter(Boolean))];
+    if (ids.length === 0) return 0;
+
+    const since = new Date(Date.now() - withinMs);
+    const recipientFilters = ids.flatMap((recipientId) => {
+      const clause = recipientQuery(recipientId);
+      return [clause];
+    });
+
+    const result = await NotificationModel.updateMany(
+      {
+        $or: recipientFilters,
+        type,
+        pushSent: { $ne: true },
+        createdAt: { $gte: since },
+      },
+      { $set: { pushSent: true } }
+    );
+
+    return result.modifiedCount ?? 0;
+  }
 }

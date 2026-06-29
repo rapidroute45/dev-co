@@ -24,6 +24,7 @@ export interface RouteUpdateData {
   driverLat?: number | null;
   driverLng?: number | null;
   driverLocationAt?: Date | null;
+  driverLocationIngestedAt?: Date | null;
   driverLocationBackgroundSharing?: boolean;
   startedAt?: Date | null;
   completedAt?: Date | null;

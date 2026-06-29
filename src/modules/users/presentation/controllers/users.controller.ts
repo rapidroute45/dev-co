@@ -19,7 +19,7 @@ export class UsersController {
   create = async (req: Request, res: Response, next: NextFunction) => {
     try {
       if (!req.user?.role) return next(new AppError('Unauthorized', 401));
-      const data = await this.createUserUseCase.execute(req.body, req.user.role);
+      const data = await this.createUserUseCase.execute(req.body, req.user.role, req.user.id);
       res.status(201).json({
         success: true,
         message: 'User created successfully.',
@@ -57,7 +57,8 @@ export class UsersController {
       const data = await this.updateUserUseCase.execute(
         String(req.params.userId),
         req.body,
-        req.user.role
+        req.user.role,
+        req.user.id
       );
       res.status(200).json({
         success: true,

@@ -1,3 +1,5 @@
 export { default as notificationRoutes } from './presentation/routes/notification.routes';
 export { NotificationService } from './application/services/notification.service';
 export { NotificationRepository } from './infrastructure/repositories/notification.repository';
+export { DeviceTokenRepository } from './infrastructure/repositories/deviceToken.repository';
+export { PushMessagingService } from './infrastructure/push/pushMessaging.service';

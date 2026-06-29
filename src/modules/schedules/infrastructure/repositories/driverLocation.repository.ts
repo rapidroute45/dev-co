@@ -29,6 +29,25 @@ export class DriverLocationRepository {
     };
   }
 
+  async saveManyPoints(params: {
+    routeId: string;
+    driverId: string;
+    points: { lat: number; lng: number; recordedAt: Date }[];
+  }): Promise<number> {
+    if (params.points.length === 0) return 0;
+    const docs = await DriverLocationModel.insertMany(
+      params.points.map((point) => ({
+        routeId: params.routeId,
+        driverId: params.driverId,
+        lat: point.lat,
+        lng: point.lng,
+        recordedAt: point.recordedAt,
+      })),
+      { ordered: true }
+    );
+    return docs.length;
+  }
+
   async listByRoute(routeId: string): Promise<DriverLocationPoint[]> {
     const docs = await DriverLocationModel.find({ routeId }).sort({ recordedAt: 1 });
     return docs.map((d) => ({

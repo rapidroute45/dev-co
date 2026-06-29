@@ -3,6 +3,7 @@ import { IScheduleRepository } from '../../domain/interfaces/schedule-repository
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IStoreRepository } from '../../../stores/domain/interfaces/store-repository.interface';
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
+import { NotificationService } from '../../../notifications/application/services/notification.service';
 import { formatScheduleDate } from '../utils/scheduleDate';
 
 export class TeamLeadScheduleAlertService {
@@ -11,7 +12,8 @@ export class TeamLeadScheduleAlertService {
     private scheduleRepo: IScheduleRepository,
     private routeRepo: IRouteRepository,
     private storeRepo: IStoreRepository,
-    private teamRepo: ITeamRepository
+    private teamRepo: ITeamRepository,
+    private notificationService?: NotificationService
   ) {}
 
   /** Rebuild team-lead alerts after dispatch creates or updates routes on a schedule. */
@@ -46,7 +48,7 @@ export class TeamLeadScheduleAlertService {
         continue;
       }
 
-      await this.alertRepo.upsertPending({
+      const alertInput = {
         scheduleId,
         teamId,
         teamLeadId: team.teamLeadId,
@@ -56,9 +58,12 @@ export class TeamLeadScheduleAlertService {
         storeName: store?.storeName ?? 'Store',
         routeCount: teamRoutes.length,
         assignedRouteCount: teamRoutes.filter((route) => Boolean(route.driverId)).length,
-        updateType: 'schedule_updated',
+        updateType: 'schedule_updated' as const,
         deletedRouteName: null,
-      });
+      };
+
+      await this.alertRepo.upsertPending(alertInput);
+      await this.notificationService?.notifyTeamLeadScheduleAlert(alertInput);
     }
   }
 
@@ -78,7 +83,7 @@ export class TeamLeadScheduleAlertService {
     const routes = await this.routeRepo.findManyByScheduleId(input.scheduleId);
     const teamRoutes = routes.filter((route) => route.teamId === input.teamId);
 
-    await this.alertRepo.upsertPending({
+    const alertInput = {
       scheduleId: input.scheduleId,
       teamId: input.teamId,
       teamLeadId: team.teamLeadId,
@@ -88,9 +93,12 @@ export class TeamLeadScheduleAlertService {
       storeName: store?.storeName ?? 'Store',
       routeCount: teamRoutes.length,
       assignedRouteCount: teamRoutes.filter((route) => Boolean(route.driverId)).length,
-      updateType: 'route_deleted',
+      updateType: 'route_deleted' as const,
       deletedRouteName: input.routeName.trim() || 'Route',
-    });
+    };
+
+    await this.alertRepo.upsertPending(alertInput);
+    await this.notificationService?.notifyTeamLeadScheduleAlert(alertInput);
   }
 
   listPending(teamLeadId: string) {

@@ -37,6 +37,7 @@ export interface UpdatePayrollBillInput {
 const EDITABLE_STATUSES = new Set<PayrollStatus>([
   PayrollStatus.DRAFT,
   PayrollStatus.TEAM_LEAD_DISPUTED,
+  PayrollStatus.PENDING_TEAM_LEAD,
 ]);
 
 export class UpdatePayrollBillUseCase {
@@ -55,7 +56,7 @@ export class UpdatePayrollBillUseCase {
     if (!bill) throw new AppError('Payroll bill not found.', 404);
     if (!EDITABLE_STATUSES.has(bill.status)) {
       throw new AppError(
-        'Payroll can only be edited while draft or after team lead dispute.',
+        'Payroll can only be edited while draft, with team lead, or after team lead dispute.',
         409
       );
     }
@@ -102,7 +103,9 @@ export class UpdatePayrollBillUseCase {
       note: input.note !== undefined ? input.note : bill.note,
       ...(bill.status === PayrollStatus.TEAM_LEAD_DISPUTED
         ? { teamLeadNote: null, teamLeadReviewedAt: null }
-        : {}),
+        : bill.status === PayrollStatus.PENDING_TEAM_LEAD
+          ? { teamLeadAcknowledgedAt: null, teamLeadReviewedAt: null }
+          : {}),
     });
     if (!updated) throw new AppError('Failed to update payroll bill.', 500);
     return updated;

@@ -61,6 +61,7 @@ export class RouteDeliveryUseCase {
     lat: number;
     lng: number;
     recordedAt: Date;
+    ingestedAt: Date;
     autoCompletedStops?: { stopId: string; stopName: string }[];
     routeCompleted?: boolean;
     dwell?: {
@@ -71,6 +72,7 @@ export class RouteDeliveryUseCase {
       startedAt?: string | null;
     };
     backgroundSharing?: boolean;
+    trailPoints?: { lat: number; lng: number; recordedAt: string }[];
   }) {
     const schedule = await this.scheduleRepo.findById(params.route.scheduleId);
     if (!schedule) return;
@@ -91,6 +93,7 @@ export class RouteDeliveryUseCase {
       lat: params.lat,
       lng: params.lng,
       recordedAt: params.recordedAt.toISOString(),
+      ingestedAt: params.ingestedAt.toISOString(),
       status: params.route.status,
       city: schedule.city,
       state: schedule.state,
@@ -107,6 +110,7 @@ export class RouteDeliveryUseCase {
           }
         : undefined,
       backgroundSharing: Boolean(params.backgroundSharing),
+      trailPoints: params.trailPoints,
     });
   }
 
@@ -141,11 +145,13 @@ export class RouteDeliveryUseCase {
     }
 
     const recordedAt = parseClientRecordedAt(clientRecordedAt);
+    const ingestedAt = new Date();
     await this.driverLocationRepo.savePoint({ routeId, driverId, lat, lng, recordedAt });
     await this.routeRepo.update(routeId, {
       driverLat: lat,
       driverLng: lng,
       driverLocationAt: recordedAt,
+      driverLocationIngestedAt: ingestedAt,
       driverLocationBackgroundSharing: Boolean(backgroundSharing),
     });
 
@@ -198,6 +204,7 @@ export class RouteDeliveryUseCase {
         lat,
         lng,
         recordedAt,
+        ingestedAt,
         autoCompletedStops,
         routeCompleted: Boolean(completedRoute),
         dwell,
@@ -230,11 +237,9 @@ export class RouteDeliveryUseCase {
   }
 
   /**
-   * Batched location ingest for the native background-geolocation HTTP layer.
-   * The SDK persists fixes in SQLite and replays them (oldest-first) as an array, so we
-   * process each point in order and return the result of the most recent one for the
-   * client UI (proximity / route-completed). Points are processed best-effort: a single
-   * bad point never rejects the whole batch.
+   * Batched location ingest for offline-first mobile uploads.
+   * All points are bulk-persisted for the GPS trail; dwell/stop logic runs in order;
+   * dispatch receives one socket event with the full trail segment.
    */
   async reportLocationBatch(
     routeId: string,
@@ -246,35 +251,105 @@ export class RouteDeliveryUseCase {
       throw new AppError('No location points provided.', 400);
     }
 
-    const ordered = [...points].sort((a, b) => {
-      const at = a.recordedAt ? Date.parse(a.recordedAt) : 0;
-      const bt = b.recordedAt ? Date.parse(b.recordedAt) : 0;
-      return at - bt;
+    const route = await this.assertDriverRoute(routeId, driverId);
+    if (route.status !== RouteStatus.IN_PROGRESS) {
+      throw new AppError('Start the route before sharing location.', 400);
+    }
+
+    const ordered = [...points]
+      .map((point) => {
+        const lat = Number(point.lat);
+        const lng = Number(point.lng);
+        return {
+          lat,
+          lng,
+          recordedAt: parseClientRecordedAt(point.recordedAt),
+        };
+      })
+      .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
+      .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+
+    if (ordered.length === 0) {
+      throw new AppError(
+        'No valid location points in batch. Invalid coordinates in batch payload.',
+        400
+      );
+    }
+
+    const ingestedAt = new Date();
+    await this.driverLocationRepo.saveManyPoints({
+      routeId,
+      driverId,
+      points: ordered,
+    });
+
+    const latest = ordered[ordered.length - 1]!;
+    await this.routeRepo.update(routeId, {
+      driverLat: latest.lat,
+      driverLng: latest.lng,
+      driverLocationAt: latest.recordedAt,
+      driverLocationIngestedAt: ingestedAt,
+      driverLocationBackgroundSharing: Boolean(backgroundSharing),
     });
 
     let lastResult: Awaited<ReturnType<RouteDeliveryUseCase['reportLocation']>> | null =
       null;
-    let accepted = 0;
 
     for (const point of ordered) {
-      const lat = Number(point.lat);
-      const lng = Number(point.lng);
-      if (!Number.isFinite(lat) || !Number.isFinite(lng)) continue;
+      const dwell = await this.dwellDetection.evaluateLocationPing({
+        routeId,
+        driverId,
+        teamId: route.teamId,
+        lat: point.lat,
+        lng: point.lng,
+        recordedAt: point.recordedAt,
+      });
 
-      try {
-        lastResult = await this.reportLocation(
+      const { autoCompleted: autoCompletedStops, arrival: stopArrival } =
+        await this.stopProximity.evaluateDriverAtStops({
+          routeId,
+          lat: point.lat,
+          lng: point.lng,
+          recordedAt: point.recordedAt,
+        });
+
+      const pickupProximity = await this.stopProximity.evaluatePickupProximity({
+        routeId,
+        lat: point.lat,
+        lng: point.lng,
+      });
+
+      if (autoCompletedStops.length > 0) {
+        await this.routeRepo.update(routeId, {
+          deliveryVerification: DeliveryVerification.PENDING,
+        });
+        await this.notifyAutoCompletedStops({
           routeId,
           driverId,
-          lat,
-          lng,
-          Boolean(backgroundSharing),
-          point.recordedAt
-        );
-        accepted += 1;
-        if (lastResult.routeCompleted) break;
-      } catch (error) {
-        // Stale point (e.g. route already finished) — skip and keep the batch flowing.
-        if (error instanceof AppError && error.statusCode >= 500) throw error;
+          teamId: route.teamId,
+          lat: point.lat,
+          lng: point.lng,
+          stops: autoCompletedStops,
+        });
+      }
+
+      lastResult = {
+        lat: point.lat,
+        lng: point.lng,
+        recordedAt: point.recordedAt.toISOString(),
+        dwell,
+        autoCompletedStops,
+        stopArrival,
+        pickupProximity,
+        routeCompleted: false,
+        backgroundSharing: Boolean(backgroundSharing),
+      };
+
+      const completedRoute = await this.tryAutoCompleteRoute(routeId, driverId);
+      if (completedRoute) {
+        lastResult.routeCompleted = true;
+        lastResult.stopArrival = null;
+        break;
       }
     }
 
@@ -282,7 +357,36 @@ export class RouteDeliveryUseCase {
       throw new AppError('No valid location points in batch.', 400);
     }
 
-    return { ...lastResult, accepted, received: points.length };
+    const routeForPublish = (await this.routeRepo.findById(routeId)) ?? route;
+    const trailPoints = ordered.map((point) => ({
+      lat: point.lat,
+      lng: point.lng,
+      recordedAt: point.recordedAt.toISOString(),
+    }));
+
+    await this.publishDriverLocation({
+      route: routeForPublish,
+      driverId,
+      lat: latest.lat,
+      lng: latest.lng,
+      recordedAt: latest.recordedAt,
+      ingestedAt,
+      autoCompletedStops: lastResult.autoCompletedStops,
+      routeCompleted: lastResult.routeCompleted,
+      dwell: lastResult.dwell,
+      backgroundSharing: Boolean(backgroundSharing),
+      trailPoints,
+    });
+
+    console.log('[location-batch]', {
+      routeId,
+      driverId,
+      accepted: ordered.length,
+      received: points.length,
+      routeCompleted: lastResult.routeCompleted,
+    });
+
+    return { ...lastResult, accepted: ordered.length, received: points.length };
   }
 
   private async notifyAutoCompletedStops(params: {
@@ -696,6 +800,7 @@ export class RouteDeliveryUseCase {
                 lat: route.driverLat,
                 lng: route.driverLng,
                 updatedAt: route.driverLocationAt,
+                ingestedAt: route.driverLocationIngestedAt,
                 sharingInBackground: route.driverLocationBackgroundSharing,
               }
             : null,

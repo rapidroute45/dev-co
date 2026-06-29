@@ -75,6 +75,7 @@ export class GetRouteUseCase {
                 lat: routeForResponse.driverLat,
                 lng: routeForResponse.driverLng,
                 updatedAt: routeForResponse.driverLocationAt,
+                ingestedAt: routeForResponse.driverLocationIngestedAt,
                 sharingInBackground: routeForResponse.driverLocationBackgroundSharing,
               }
             : null,

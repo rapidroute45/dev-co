@@ -7,8 +7,14 @@ import { User } from '../../../auth/domain/entities/user.entity';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 import { canAssignRole } from '../../../../shared/constants/assignableRoles';
 import { AppError } from '../../../../shared/errors/app-error';
-import { mapUserToResponse } from '../mappers/userResponse.mapper';
+import { mapUserToResponse, resolveUserAssignedCities } from '../mappers/userResponse.mapper';
 import { parsePhoneInput } from '../../../../shared/utils/phone';
+import { NotificationService } from '../../../notifications/application/services/notification.service';
+import { resolveDisplayName } from '../../../../shared/utils/displayName';
+
+function isOpsManagerActor(role: UserRole): boolean {
+  return role === UserRole.ADMIN || role === UserRole.DISPATCH_MANAGER;
+}
 
 export interface CreateUserDTO {
   email: string;
@@ -28,13 +34,14 @@ export class CreateUserUseCase {
 
   constructor(
     private userRepo: IUserRepository,
-    teamRepo: ITeamRepository
+    teamRepo: ITeamRepository,
+    private notificationService: NotificationService
   ) {
     this.teamAssignment = new TeamAssignmentService(userRepo, teamRepo);
     this.cityAssignment = new CityAssignmentService(userRepo);
   }
 
-  async execute(dto: CreateUserDTO, actorRole: UserRole) {
+  async execute(dto: CreateUserDTO, actorRole: UserRole, actorUserId?: string) {
     if (!canAssignRole(actorRole, dto.role)) {
       throw new AppError('You are not allowed to create a user with this role.', 403);
     }
@@ -91,6 +98,25 @@ export class CreateUserUseCase {
     });
 
     if (!updated) throw new AppError('Failed to create user', 500);
+
+    if (
+      dto.role === UserRole.DISPATCH_TEAM &&
+      status === UserStatus.ACTIVE &&
+      isOpsManagerActor(actorRole) &&
+      actorUserId
+    ) {
+      const actorUser = await this.userRepo.findById(actorUserId);
+      const actorName = resolveDisplayName(actorUser?.fullName, actorUser?.email ?? 'Dispatch');
+      const cities = resolveUserAssignedCities(updated);
+      await this.notificationService.notifyDispatchTeamUpdated({
+        recipientId: userId,
+        userId,
+        actorName,
+        summary: cities.length
+          ? `Your account is active. Assigned cities: ${cities.join(', ')}.`
+          : 'Your dispatch team account is active.',
+      });
+    }
 
     return mapUserToResponse(updated, team);
   }

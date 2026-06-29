@@ -122,6 +122,7 @@ export class ListLiveRoutesUseCase {
           lat: route.driverLat,
           lng: route.driverLng,
           updatedAt: route.driverLocationAt,
+          ingestedAt: route.driverLocationIngestedAt,
           sharingInBackground: route.driverLocationBackgroundSharing,
         },
       });
