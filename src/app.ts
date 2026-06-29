@@ -36,7 +36,13 @@ app.use(
 app.use(cors({
   origin: corsOrigins,
   credentials: true,
-  allowedHeaders: ['Content-Type', 'Authorization', 'Accept', 'X-Dispatch-Environment'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'Accept',
+    'X-Dispatch-Environment',
+    'X-Ops-Elevation',
+  ],
 }));
 
 app.use(express.json({ limit: '2mb' }));
