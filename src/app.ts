@@ -22,6 +22,7 @@ import { dbEnvironmentMiddleware } from './config/dbContext';
 import { resolveCorsOrigins } from './config/cors';
 
 const app = express();
+app.set('trust proxy', 1);
 
 const corsOrigins = resolveCorsOrigins();
 
