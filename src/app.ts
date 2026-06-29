@@ -18,12 +18,11 @@ import { cityRoutes } from './modules/cities';
 import { AppError } from './shared/errors/app-error';
 import { UPLOADS_DIR } from './shared/upload/upload.config';
 import { dbEnvironmentMiddleware } from './config/dbContext';
+import { resolveCorsOrigins } from './config/cors';
 
 const app = express();
 
-const corsOrigins = process.env.CORS_ORIGINS
-  ? process.env.CORS_ORIGINS.split(',').map((o) => o.trim()).filter(Boolean)
-  : ['http://localhost:3000', 'http://localhost:5173'];
+const corsOrigins = resolveCorsOrigins();
 
 app.use(cors({
   origin: corsOrigins,

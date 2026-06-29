@@ -1,6 +1,13 @@
 import { Schema } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 
+export interface AppSettingsDocument {
+  dispatchElevationPin: string;
+  payrollElevationPin: string;
+}
+
+export type AppSettingsDoc = AppSettingsDocument;
+
 const AppSettingsSchema = new Schema(
   {
     dispatchElevationPin: { type: String, required: true, default: '4545' },
@@ -9,9 +16,7 @@ const AppSettingsSchema = new Schema(
   { timestamps: true }
 );
 
-export const AppSettingsModel = createScopedModel('AppSettings', AppSettingsSchema);
-
-export type AppSettingsDoc = {
-  dispatchElevationPin: string;
-  payrollElevationPin: string;
-};
+export const AppSettingsModel = createScopedModel<AppSettingsDocument>(
+  'AppSettings',
+  AppSettingsSchema
+);

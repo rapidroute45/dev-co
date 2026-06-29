@@ -2,6 +2,21 @@ import { Schema, Types } from 'mongoose';
 import { createScopedModel } from '../../../../shared/db/createScopedModel';
 import { UserRole, UserStatus } from '../../../../shared/constants/roles';
 
+export interface UserDocument {
+  _id: Types.ObjectId;
+  email: string;
+  password: string;
+  fullName?: string | null;
+  phone?: string | null;
+  role?: UserRole | null;
+  status: UserStatus;
+  teamId?: Types.ObjectId | null;
+  assignedCity?: string | null;
+  assignedCities?: string[];
+  createdAt?: Date;
+  updatedAt?: Date;
+}
+
 const UserSchema = new Schema({
   email: { type: String, required: true, unique: true, lowercase: true, trim: true },
   password: { type: String, required: true },
@@ -21,4 +36,4 @@ const UserSchema = new Schema({
   assignedCities: { type: [String], default: [], index: true },
 }, { timestamps: true });
 
-export const UserModel = createScopedModel('User', UserSchema);
+export const UserModel = createScopedModel<UserDocument>('User', UserSchema);
