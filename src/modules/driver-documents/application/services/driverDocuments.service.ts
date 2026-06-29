@@ -383,6 +383,42 @@ export class DriverDocumentsService {
     return this.getDriverDocumentsForManager(driverId);
   }
 
+  async requestDocumentUpload(driverId: string, requirementId: string) {
+    const user = await this.userRepo.findById(driverId);
+    if (!user || !user.role || !DRIVER_ROLES.includes(user.role)) {
+      throw new AppError('Driver not found.', 404);
+    }
+
+    const requirement = await DocumentRequirementModel.findById(requirementId);
+    if (!requirement || !requirement.active) {
+      throw new AppError('Document requirement not found.', 404);
+    }
+
+    const today = startOfTodayUtc();
+    const submission = await DriverDocumentSubmissionModel.findOne({ driverId, requirementId });
+    const status = this.computeStatus(submission, requirement, today);
+
+    const requestable = [
+      DocumentSubmissionStatus.MISSING,
+      DocumentSubmissionStatus.REJECTED,
+      DocumentSubmissionStatus.EXPIRED,
+    ];
+    if (!requestable.includes(status)) {
+      throw new AppError(
+        'Upload can only be requested for missing, rejected, or expired documents.',
+        400
+      );
+    }
+
+    await this.notificationService.notifyDocumentUploadRequested({
+      recipientId: driverId,
+      requirementId,
+      requirementTitle: requirement.title,
+    });
+
+    return { requested: true, requirementTitle: requirement.title };
+  }
+
   async rejectDocument(
     managerId: string,
     driverId: string,

@@ -44,5 +44,10 @@ router.post(
   managerGuard,
   controller.rejectDocument
 );
+router.post(
+  '/drivers/:driverId/:requirementId/request',
+  managerGuard,
+  controller.requestDocumentUpload
+);
 
 export default router;

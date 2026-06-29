@@ -719,6 +719,35 @@ export class NotificationService {
     );
   }
 
+  async notifyDocumentUploadRequested(input: {
+    recipientId: string;
+    requirementId: string;
+    requirementTitle: string;
+  }): Promise<void> {
+    const payload = { requirementId: input.requirementId, deepLink: '/documents' };
+    const title = 'Document upload requested';
+    const message = `Please upload: ${input.requirementTitle}`;
+
+    await this.notificationRepo.save(
+      new Notification({
+        recipientId: input.recipientId,
+        type: NotificationType.DOCUMENT_REQUIRED,
+        title,
+        message,
+        payload,
+        read: false,
+        pushSent: false,
+      })
+    );
+    void this.sendPushIfSupported(
+      [input.recipientId],
+      title,
+      message,
+      payload,
+      NotificationType.DOCUMENT_REQUIRED
+    );
+  }
+
   async notifyDocumentRequiredBatch(input: {
     recipientIds: string[];
     requirementId: string;
