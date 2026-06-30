@@ -500,4 +500,23 @@ export class RouteController {
       next(error);
     }
   };
+
+  opsCompleteRoute = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const data = await this.routeDeliveryUseCase.completeRouteAsDispatch(
+        String(req.params.id),
+        req.user
+      );
+      res.status(200).json({
+        success: true,
+        message:
+          data.stopsCompleted > 0
+            ? `Route completed. ${data.stopsCompleted} stop(s) marked as delivered.`
+            : 'Route completed.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
 }

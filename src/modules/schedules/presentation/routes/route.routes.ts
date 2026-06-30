@@ -233,6 +233,7 @@ router.post('/:id/location', driverGuard, controller.reportLocation);
 router.post('/:id/location/batch', driverGuard, controller.reportLocationBatch);
 router.post('/:id/reroute-segment', driverGuard, controller.rerouteSegment);
 router.post('/:id/complete', driverGuard, controller.completeRoute);
+router.post('/:id/ops-complete-route', [...dispatchOpsGuard, requireDispatchElevation], controller.opsCompleteRoute);
 router.post('/:routeId/stops/:stopId/complete', driverGuard, controller.completeStop);
 router.post('/:routeId/stops/:stopId/return', driverGuard, controller.returnStop);
 router.post('/:routeId/stops/:stopId/ops-complete', [...dispatchOpsGuard, requireDispatchElevation], controller.opsCompleteStop);
