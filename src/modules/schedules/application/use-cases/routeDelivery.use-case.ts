@@ -498,13 +498,11 @@ export class RouteDeliveryUseCase {
       recordedAt: point.recordedAt,
     }));
 
-    if (batchOffRoute) {
-      try {
-        incomingPath = await matchGpsTrailToRoads(rawPathPoints);
-      } catch (error) {
-        console.warn('[location-batch] road match failed — using raw GPS', { routeId, error });
-        incomingPath = rawPathPoints;
-      }
+    try {
+      incomingPath = await matchGpsTrailToRoads(rawPathPoints);
+    } catch (error) {
+      console.warn('[location-batch] road match failed — using raw GPS', { routeId, error });
+      incomingPath = rawPathPoints;
     }
 
     const pathLatest = incomingPath[incomingPath.length - 1] ?? latest;
