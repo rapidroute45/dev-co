@@ -497,13 +497,23 @@ export class RouteDeliveryUseCase {
       lng: point.lng,
       recordedAt: point.recordedAt,
     }));
+    let roadMatchProvider: 'google' | 'osrm' | 'raw' = 'raw';
 
     try {
-      incomingPath = await matchGpsTrailToRoads(rawPathPoints);
+      const roadMatch = await matchGpsTrailToRoads(rawPathPoints);
+      incomingPath = roadMatch.points;
+      roadMatchProvider = roadMatch.provider;
     } catch (error) {
       console.warn('[location-batch] road match failed — using raw GPS', { routeId, error });
       incomingPath = rawPathPoints;
     }
+
+    console.log('[location-batch]', {
+      routeId,
+      roadMatch: roadMatchProvider,
+      matchedPoints: incomingPath.length,
+      rawPoints: rawPathPoints.length,
+    });
 
     const pathLatest = incomingPath[incomingPath.length - 1] ?? latest;
     const driverRoutePath = mergeRoutePathPoints(route.driverRoutePath ?? [], incomingPath);

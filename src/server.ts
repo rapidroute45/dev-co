@@ -3,6 +3,7 @@ import app from './app';
 import { ENV } from './config/env';
 import { connectDB } from './config/db';
 import { logFirebaseStartupStatus } from './shared/firebase/firebaseAdmin';
+import { logGoogleMapsStartupStatus } from './shared/google/logGoogleMapsStartupStatus';
 import { chatService, initChatSocket } from './modules/chat';
 import { startRouteBackgroundJobs } from './modules/schedules';
 import {
@@ -17,6 +18,7 @@ const startServer = async () => {
   await validateProductionAppSettings(() => new AppSettingsRepository().findExisting());
   startRouteBackgroundJobs();
   logFirebaseStartupStatus();
+  await logGoogleMapsStartupStatus();
 
   const httpServer = http.createServer(app);
   initChatSocket(httpServer, chatService);
