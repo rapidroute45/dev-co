@@ -23,6 +23,9 @@ import {
   mergeRoutePathPoints,
 } from '../utils/routePath';
 import { filterGpsPathOutliers, filterIncomingGpsBatch } from '../utils/stopDestinationCoords';
+import { distanceToPolylineM } from '../utils/distanceToPolyline';
+import { OFF_ROUTE_THRESHOLD_M } from '../constants/driverLocationMonitor.constants';
+import { matchGpsTrailToRoads } from '../utils/matchGpsTrailToRoads';
 
 export class RouteDeliveryUseCase {
   constructor(
@@ -442,13 +445,15 @@ export class RouteDeliveryUseCase {
 
     const ordered = [...points]
       .map((point) => {
-        const lat = Number(point.rawLat ?? point.lat);
-        const lng = Number(point.rawLng ?? point.lng);
+        const lat = Number(point.lat);
+        const lng = Number(point.lng);
+        const rawLat = Number.isFinite(Number(point.rawLat)) ? Number(point.rawLat) : lat;
+        const rawLng = Number.isFinite(Number(point.rawLng)) ? Number(point.rawLng) : lng;
         return {
           lat,
           lng,
-          rawLat: Number.isFinite(Number(point.rawLat)) ? Number(point.rawLat) : lat,
-          rawLng: Number.isFinite(Number(point.rawLng)) ? Number(point.rawLng) : lng,
+          rawLat,
+          rawLng,
           recordedAt: parseClientRecordedAt(point.recordedAt),
         };
       })
@@ -473,17 +478,42 @@ export class RouteDeliveryUseCase {
 
     const latest = plausible[plausible.length - 1]!;
     const ingestedAt = new Date();
-    const incomingPath = plausible.map((point) => ({
+
+    const segmentPolyline = route.driverActiveSegmentPolyline ?? [];
+    const serverOffRoute =
+      segmentPolyline.length >= 2 &&
+      distanceToPolylineM({ lat: latest.rawLat, lng: latest.rawLng }, segmentPolyline) >
+        OFF_ROUTE_THRESHOLD_M;
+    const batchOffRoute = Boolean(meta?.offRoute) || serverOffRoute;
+
+    const rawPathPoints = plausible.map((point) => ({
+      lat: point.rawLat,
+      lng: point.rawLng,
+      recordedAt: point.recordedAt,
+    }));
+
+    let incomingPath = plausible.map((point) => ({
       lat: point.lat,
       lng: point.lng,
       recordedAt: point.recordedAt,
     }));
+
+    if (batchOffRoute) {
+      try {
+        incomingPath = await matchGpsTrailToRoads(rawPathPoints);
+      } catch (error) {
+        console.warn('[location-batch] road match failed — using raw GPS', { routeId, error });
+        incomingPath = rawPathPoints;
+      }
+    }
+
+    const pathLatest = incomingPath[incomingPath.length - 1] ?? latest;
     const driverRoutePath = mergeRoutePathPoints(route.driverRoutePath ?? [], incomingPath);
 
     const routePatch: Parameters<typeof this.routeRepo.update>[1] = {
-      driverLat: latest.lat,
-      driverLng: latest.lng,
-      driverLocationAt: latest.recordedAt,
+      driverLat: pathLatest.lat,
+      driverLng: pathLatest.lng,
+      driverLocationAt: pathLatest.recordedAt,
       driverLocationIngestedAt: ingestedAt,
       driverLocationBackgroundSharing: false,
       driverRoutePath,
@@ -524,7 +554,7 @@ export class RouteDeliveryUseCase {
           recordedAt: point.recordedAt,
         })),
         scheduleCity,
-        { offRoute: Boolean(meta?.offRoute) }
+        { offRoute: batchOffRoute }
       );
     } catch (error) {
       console.warn('[location-batch] monitor failed — location still saved', {
@@ -537,14 +567,14 @@ export class RouteDeliveryUseCase {
     const routeForEmit = (await this.routeRepo.findById(routeId)) ?? updatedRoute;
 
     try {
-      const trailSlice = plausible.slice(-MAX_TRAIL_EMIT_POINTS);
+      const trailSlice = incomingPath.slice(-MAX_TRAIL_EMIT_POINTS);
       emitDriverCurrentLocation({
         routeId,
         scheduleId: route.scheduleId,
         driverId,
-        lat: latest.lat,
-        lng: latest.lng,
-        recordedAt: latest.recordedAt.toISOString(),
+        lat: pathLatest.lat,
+        lng: pathLatest.lng,
+        recordedAt: pathLatest.recordedAt.toISOString(),
         trailPoints: trailSlice.map((point) => ({
           lat: point.lat,
           lng: point.lng,
@@ -572,9 +602,9 @@ export class RouteDeliveryUseCase {
     return {
       accepted: plausible.length,
       received: points.length,
-      lat: latest.lat,
-      lng: latest.lng,
-      recordedAt: latest.recordedAt.toISOString(),
+      lat: pathLatest.lat,
+      lng: pathLatest.lng,
+      recordedAt: pathLatest.recordedAt.toISOString(),
     };
   }
 }
