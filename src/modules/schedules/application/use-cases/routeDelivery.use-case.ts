@@ -379,6 +379,61 @@ export class RouteDeliveryUseCase {
     return this.routeStopEnrichment.enrichRoute(completed);
   }
 
+  /** Dispatch ops: mark every pending dropoff delivered and finish the route. */
+  async completeRouteAsDispatch(routeId: string, actor?: CityActor) {
+    const route = await this.assertDispatchStopUpdate(routeId, actor);
+    const allowedRouteStatuses = new Set<RouteStatus>([
+      RouteStatus.ACTIVE,
+      RouteStatus.IN_PROGRESS,
+    ]);
+    if (!allowedRouteStatuses.has(route.status as RouteStatus)) {
+      throw new AppError('Route cannot be completed in its current state.', 400);
+    }
+
+    const stops = await this.routeStopRepo.findByRouteId(routeId);
+    const dropoffs = stops.filter((s) => s.type === 'dropoff');
+    if (dropoffs.length === 0) {
+      throw new AppError('Route has no dropoff stops.', 400);
+    }
+
+    const pending = dropoffs.filter((s) => s.status === RouteStopStatus.PENDING);
+    const now = new Date();
+
+    for (const stop of pending) {
+      const updated = await this.routeStopRepo.updateById(stop.id!, {
+        status: RouteStopStatus.COMPLETED,
+        completedAt: now,
+        returnReason: null,
+        returnReasonCustom: null,
+        deliveryPhotoUrl: null,
+      });
+      if (!updated) throw new AppError('Failed to update stop.', 500);
+    }
+
+    if (pending.length > 0) {
+      await this.routeRepo.update(routeId, {
+        deliveryVerification: DeliveryVerification.PENDING,
+      });
+
+      emitRouteUpdated({
+        routeId,
+        scheduleId: route.scheduleId,
+        action: 'updated',
+        driverIds: [route.driverId!],
+      });
+    }
+
+    const completed = await this.routeAutoComplete.maybeComplete(routeId);
+    if (!completed) {
+      throw new AppError('Failed to complete route.', 500);
+    }
+
+    return {
+      route: await this.routeStopEnrichment.enrichRoute(completed),
+      stopsCompleted: pending.length,
+    };
+  }
+
   /** One-time current location snapshot when the driver starts a route. */
   async reportCurrentLocation(routeId: string, driverId: string, lat: number, lng: number) {
     const route = await this.assertDriverRoute(routeId, driverId);
