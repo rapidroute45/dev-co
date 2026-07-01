@@ -45,6 +45,12 @@ export interface RouteUpdateData {
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;
   driverDwellAlertSentAt?: Date | null;
+  driverBreakStartedAt?: Date | null;
+  driverBreakEndsAt?: Date | null;
+  driverBreakDurationMin?: number | null;
+  driverBreakAnchorLat?: number | null;
+  driverBreakAnchorLng?: number | null;
+  driverBreakMovementAlertSentAt?: Date | null;
   driverOffRouteAlertSentAt?: Date | null;
   driverLocationStaleAlertSentAt?: Date | null;
 }

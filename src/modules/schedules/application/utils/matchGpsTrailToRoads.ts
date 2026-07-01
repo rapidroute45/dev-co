@@ -1,13 +1,20 @@
 import { GOOGLE_MAPS_API_KEY, hasGoogleMapsApiKey } from '../../../../shared/constants/googleMaps';
 import { distanceToPolylineM } from './distanceToPolyline';
+import { haversineMeters } from './haversine';
 import type { LatLng } from './osrmDrivingPath';
 
 const GOOGLE_SNAP_CHUNK_SIZE = 100;
 const SNAP_QUALITY_THRESHOLD_M = 30;
+const DEFAULT_ANCHOR_MAX_DISTANCE_M = 100;
 
 export type GpsTrailPoint = { lat: number; lng: number; recordedAt: Date };
 
 export type RoadMatchProvider = 'google' | 'osrm' | 'raw';
+
+export type MatchGpsTrailOptions = {
+  anchorPoint?: LatLng | null;
+  maxAnchorDistanceM?: number;
+};
 
 export type RoadMatchResult = {
   points: GpsTrailPoint[];
@@ -88,7 +95,11 @@ export function assignInterpolatedTimestamps(
   }));
 }
 
-async function snapChunkWithGoogle(points: LatLng[]): Promise<SnapChunkResult> {
+async function snapChunkWithGoogle(
+  points: LatLng[],
+  interpolate = true,
+  minOutputPoints = 2
+): Promise<SnapChunkResult> {
   if (points.length === 0) return { points: [], snapped: false };
   if (!hasGoogleMapsApiKey()) {
     console.warn('[road-match] Google Snap to Roads skipped — GOOGLE_MAPS_API_KEY not set');
@@ -98,7 +109,7 @@ async function snapChunkWithGoogle(points: LatLng[]): Promise<SnapChunkResult> {
   const path = points.map((p) => `${p.lat},${p.lng}`).join('|');
   const url = new URL('https://roads.googleapis.com/v1/snapToRoads');
   url.searchParams.set('path', path);
-  url.searchParams.set('interpolate', 'true');
+  url.searchParams.set('interpolate', interpolate ? 'true' : 'false');
   url.searchParams.set('key', GOOGLE_MAPS_API_KEY);
 
   try {
@@ -129,7 +140,7 @@ async function snapChunkWithGoogle(points: LatLng[]): Promise<SnapChunkResult> {
       }))
       .filter(isValidPoint);
 
-    if (snapped.length < 2) {
+    if (snapped.length < minOutputPoints) {
       console.warn('[road-match] Google Snap to Roads returned too few points', {
         input: points.length,
         output: snapped.length,
@@ -142,6 +153,32 @@ async function snapChunkWithGoogle(points: LatLng[]): Promise<SnapChunkResult> {
     console.warn('[road-match] Google Snap to Roads request failed', { error });
     return { points, snapped: false };
   }
+}
+
+/** Snap one GPS point to the nearest road without path interpolation. */
+export async function snapSinglePointToRoads(point: LatLng): Promise<LatLng> {
+  if (!isValidPoint(point)) return point;
+  if (!hasGoogleMapsApiKey()) return point;
+
+  const result = await snapChunkWithGoogle([point], false, 1);
+  return result.snapped ? result.points[0] ?? point : point;
+}
+
+function trimAnchorPrefix(matched: LatLng[], batchStart: LatLng): LatLng[] {
+  if (matched.length <= 1) return matched;
+
+  let bestIndex = 0;
+  let bestDistanceM = Infinity;
+  for (let i = 0; i < matched.length; i += 1) {
+    const candidate = matched[i]!;
+    const distanceM = haversineMeters(candidate.lat, candidate.lng, batchStart.lat, batchStart.lng);
+    if (distanceM < bestDistanceM) {
+      bestDistanceM = distanceM;
+      bestIndex = i;
+    }
+  }
+
+  return matched.slice(bestIndex);
 }
 
 async function matchWithGoogle(coords: LatLng[]): Promise<{ points: LatLng[]; ok: boolean }> {
@@ -218,7 +255,10 @@ async function matchWithOsrm(points: LatLng[]): Promise<{ points: LatLng[]; ok: 
 }
 
 /** Google Snap-to-Roads with OSRM match fallback; returns provider used. */
-export async function matchGpsTrailToRoads(points: GpsTrailPoint[]): Promise<RoadMatchResult> {
+export async function matchGpsTrailToRoads(
+  points: GpsTrailPoint[],
+  options: MatchGpsTrailOptions = {}
+): Promise<RoadMatchResult> {
   const valid = points.filter((p) => isValidPoint(p) && !Number.isNaN(p.recordedAt.getTime()));
   if (valid.length < 2) {
     return {
@@ -231,7 +271,7 @@ export async function matchGpsTrailToRoads(points: GpsTrailPoint[]): Promise<Roa
 
   const startAt = valid[0]!.recordedAt;
   const endAt = valid[valid.length - 1]!.recordedAt;
-  const coords = dedupeConsecutive(valid.map((p) => ({ lat: p.lat, lng: p.lng })));
+  let coords = dedupeConsecutive(valid.map((p) => ({ lat: p.lat, lng: p.lng })));
 
   if (coords.length < 2) {
     return {
@@ -242,13 +282,26 @@ export async function matchGpsTrailToRoads(points: GpsTrailPoint[]): Promise<Roa
     };
   }
 
+  const batchStart = coords[0]!;
+  const anchorPoint = options.anchorPoint ?? null;
+  const maxAnchorDistanceM = options.maxAnchorDistanceM ?? DEFAULT_ANCHOR_MAX_DISTANCE_M;
+  const anchorUsed =
+    anchorPoint != null &&
+    isValidPoint(anchorPoint) &&
+    haversineMeters(anchorPoint.lat, anchorPoint.lng, batchStart.lat, batchStart.lng) <=
+      maxAnchorDistanceM;
+
+  if (anchorUsed) {
+    coords = dedupeConsecutive([anchorPoint, ...coords]);
+  }
+
   let provider: RoadMatchProvider = 'raw';
   let matchedCoords: LatLng[] = coords;
 
   if (hasGoogleMapsApiKey()) {
     const google = await matchWithGoogle(coords);
     if (google.ok) {
-      matchedCoords = google.points;
+      matchedCoords = anchorUsed ? trimAnchorPrefix(google.points, batchStart) : google.points;
       provider = 'google';
     }
   }
@@ -256,9 +309,20 @@ export async function matchGpsTrailToRoads(points: GpsTrailPoint[]): Promise<Roa
   if (provider === 'raw') {
     const osrm = await matchWithOsrm(coords);
     if (osrm.ok) {
-      matchedCoords = osrm.points;
+      matchedCoords = anchorUsed ? trimAnchorPrefix(osrm.points, batchStart) : osrm.points;
       provider = 'osrm';
+    } else if (anchorUsed) {
+      matchedCoords = coords.slice(1);
     }
+  }
+
+  if (matchedCoords.length < 2) {
+    return {
+      points: valid,
+      provider: 'raw',
+      inputCount: coords.length,
+      outputCount: valid.length,
+    };
   }
 
   const timed =
@@ -270,6 +334,7 @@ export async function matchGpsTrailToRoads(points: GpsTrailPoint[]): Promise<Roa
     provider,
     input: coords.length,
     output: timed.length,
+    anchorUsed,
   });
 
   return {

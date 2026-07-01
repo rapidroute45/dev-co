@@ -25,7 +25,12 @@ import {
 import { filterGpsPathOutliers, filterIncomingGpsBatch } from '../utils/stopDestinationCoords';
 import { distanceToPolylineM } from '../utils/distanceToPolyline';
 import { OFF_ROUTE_THRESHOLD_M } from '../constants/driverLocationMonitor.constants';
-import { matchGpsTrailToRoads } from '../utils/matchGpsTrailToRoads';
+import { matchGpsTrailToRoads, snapSinglePointToRoads } from '../utils/matchGpsTrailToRoads';
+import {
+  collapseStationaryBatch,
+  isStationaryGpsBatch,
+  shouldSkipTrailAppend,
+} from '../utils/stationaryGpsBatch';
 
 export class RouteDeliveryUseCase {
   constructor(
@@ -490,12 +495,24 @@ export class RouteDeliveryUseCase {
     points: Array<{ lat: number; lng: number; rawLat?: number; rawLng?: number; recordedAt?: string }>,
     meta?: { plannedStopId?: string; progressIndex?: number; offRoute?: boolean }
   ) {
-    const route = await this.assertDriverRoute(routeId, driverId);
-    if (route.status !== RouteStatus.IN_PROGRESS) {
-      throw new AppError('Start the route before sharing location.', 400);
-    }
+    const route = await this.routeRepo.findById(routeId);
+    if (!route) throw new AppError('Route not found.', 404);
+    if (route.driverId !== driverId) throw new AppError('Access denied.', 403);
     if (!Array.isArray(points) || points.length === 0) {
       throw new AppError('No location points provided.', 400);
+    }
+
+    if (route.status !== RouteStatus.IN_PROGRESS && route.status !== RouteStatus.ACTIVE) {
+      return {
+        ignored: true as const,
+        reason: 'route_not_active' as const,
+        accepted: 0,
+        received: points.length,
+      };
+    }
+
+    if (route.status !== RouteStatus.IN_PROGRESS) {
+      throw new AppError('Start the route before sharing location.', 400);
     }
 
     const ordered = [...points]
@@ -552,26 +569,49 @@ export class RouteDeliveryUseCase {
       lng: point.lng,
       recordedAt: point.recordedAt,
     }));
-    let roadMatchProvider: 'google' | 'osrm' | 'raw' = 'raw';
+    let roadMatchProvider: 'google' | 'osrm' | 'raw' | 'stationary' = 'raw';
+    const stationary = isStationaryGpsBatch(rawPathPoints);
 
-    try {
-      const roadMatch = await matchGpsTrailToRoads(rawPathPoints);
-      incomingPath = roadMatch.points;
-      roadMatchProvider = roadMatch.provider;
-    } catch (error) {
-      console.warn('[location-batch] road match failed — using raw GPS', { routeId, error });
-      incomingPath = rawPathPoints;
+    if (stationary) {
+      let collapsed = collapseStationaryBatch(rawPathPoints);
+      const snapped = await snapSinglePointToRoads({ lat: collapsed.lat, lng: collapsed.lng });
+      collapsed = { ...collapsed, lat: snapped.lat, lng: snapped.lng };
+      incomingPath = [collapsed];
+      roadMatchProvider = 'stationary';
+    } else {
+      const lastPathPoint = route.driverRoutePath?.length
+        ? route.driverRoutePath[route.driverRoutePath.length - 1]!
+        : null;
+      const anchorPoint =
+        lastPathPoint != null ? { lat: lastPathPoint.lat, lng: lastPathPoint.lng } : null;
+
+      try {
+        const roadMatch = await matchGpsTrailToRoads(rawPathPoints, { anchorPoint });
+        incomingPath = roadMatch.points;
+        roadMatchProvider = roadMatch.provider;
+      } catch (error) {
+        console.warn('[location-batch] road match failed — using raw GPS', { routeId, error });
+        incomingPath = rawPathPoints;
+      }
     }
+
+    const pathToMerge =
+      stationary && shouldSkipTrailAppend(route.driverRoutePath ?? [], incomingPath[0] ?? null)
+        ? []
+        : incomingPath;
+    const trailAppended = pathToMerge.length > 0;
 
     console.log('[location-batch]', {
       routeId,
       roadMatch: roadMatchProvider,
       matchedPoints: incomingPath.length,
       rawPoints: rawPathPoints.length,
+      stationary,
+      trailAppended,
     });
 
     const pathLatest = incomingPath[incomingPath.length - 1] ?? latest;
-    const driverRoutePath = mergeRoutePathPoints(route.driverRoutePath ?? [], incomingPath);
+    const driverRoutePath = mergeRoutePathPoints(route.driverRoutePath ?? [], pathToMerge);
 
     const routePatch: Parameters<typeof this.routeRepo.update>[1] = {
       driverLat: pathLatest.lat,
@@ -630,7 +670,7 @@ export class RouteDeliveryUseCase {
     const routeForEmit = (await this.routeRepo.findById(routeId)) ?? updatedRoute;
 
     try {
-      const trailSlice = incomingPath.slice(-MAX_TRAIL_EMIT_POINTS);
+      const trailSlice = pathToMerge.slice(-MAX_TRAIL_EMIT_POINTS);
       emitDriverCurrentLocation({
         routeId,
         scheduleId: route.scheduleId,
@@ -644,6 +684,7 @@ export class RouteDeliveryUseCase {
           recordedAt: point.recordedAt.toISOString(),
         })),
         dwell: this.locationMonitor.buildDwellPayload(routeForEmit),
+        break: this.locationMonitor.buildBreakPayload(routeForEmit),
         segmentStopId: routeForEmit.driverRouteSegmentStopId ?? undefined,
         progressIndex: routeForEmit.driverRouteProgressIndex ?? undefined,
       });

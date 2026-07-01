@@ -5,6 +5,7 @@ import { IStoreRepository } from '../../../stores/domain/interfaces/store-reposi
 import { ITeamRepository } from '../../../teams/domain/interfaces/team-repository.interface';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { formatScheduleDate, parseScheduleDate } from '../utils/scheduleDate';
+import { estimateRouteDriveDurationSec } from '../utils/estimateRouteDriveDuration';
 import { mapStoreToResponse } from '../../../stores/application/mappers/storeResponse.mapper';
 import { RouteStopEnrichmentService } from '../services/routeStopEnrichment.service';
 
@@ -44,12 +45,29 @@ export class ListMyRoutesUseCase {
 
     const items = await Promise.all(
       enriched.map(async (routeDto, index) => {
-        const route = routes[index];
+        const route = routes[index]!;
         const schedule = await this.scheduleRepo.findById(route.scheduleId);
         const store = schedule ? await this.storeRepo.findById(schedule.storeId) : null;
 
+        let estimatedDriveDurationSec: number | null = null;
+        try {
+          estimatedDriveDurationSec = await estimateRouteDriveDurationSec({
+            route,
+            pickup: routeDto.pickup as Parameters<typeof estimateRouteDriveDurationSec>[0]['pickup'],
+            dropoffs: (routeDto.dropoffs ?? []) as Parameters<
+              typeof estimateRouteDriveDurationSec
+            >[0]['dropoffs'],
+          });
+        } catch (error) {
+          console.warn('[list-my-routes] drive duration estimate failed', {
+            routeId: route.id,
+            error,
+          });
+        }
+
         return {
           ...routeDto,
+          estimatedDriveDurationSec,
           schedule: schedule
             ? {
                 id: schedule.id,

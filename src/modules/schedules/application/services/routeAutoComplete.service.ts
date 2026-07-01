@@ -8,6 +8,7 @@ import { IRouteStopRepository } from '../../domain/interfaces/route-stop-reposit
 import { computeOvertimeHours } from '../utils/routeOvertime';
 import { resolveRouteTimingFromStops } from '../utils/routeDuration';
 import { emitRouteUpdated } from '../../../chat/socket/chat.socket';
+import { clearDriverBreakFields } from '../utils/driverBreak.utils';
 import type { Route } from '../../domain/entities/route.entity';
 
 /**
@@ -64,6 +65,7 @@ export class RouteAutoCompleteService {
       driverDwellAnchorLng: null,
       driverDwellStartedAt: null,
       driverDwellAlertSentAt: null,
+      ...clearDriverBreakFields(),
       driverLocationBackgroundSharing: false,
     });
     if (!updated) throw new AppError('Failed to complete route.', 500);

@@ -264,6 +264,13 @@ export type DriverCurrentLocationPayload = {
     thresholdMinutes: number;
     alertSent: boolean;
   } | null;
+  break?: {
+    active: boolean;
+    startedAt: string;
+    endsAt: string;
+    durationMinutes: number;
+    remainingMinutes: number;
+  } | null;
   segmentStopId?: string;
   progressIndex?: number;
 };
@@ -297,6 +304,37 @@ export type DriverOffRoutePayload = {
   driverName?: string;
 };
 
+export type DriverBreakStartedPayload = {
+  routeId: string;
+  scheduleId: string;
+  driverId: string;
+  driverName?: string;
+  durationMinutes: number;
+  startedAt: string;
+  endsAt: string;
+  lat?: number;
+  lng?: number;
+};
+
+export type DriverBreakMovementPayload = {
+  routeId: string;
+  scheduleId: string;
+  driverId: string;
+  driverName?: string;
+  lat: number;
+  lng: number;
+};
+
+export type DriverBreakEndedPayload = {
+  routeId: string;
+  scheduleId: string;
+  driverId: string;
+  driverName?: string;
+  reason: 'manual' | 'timer' | 'movement';
+  lat?: number;
+  lng?: number;
+};
+
 /** Live driver location for dispatch tracking maps. */
 export function emitDriverCurrentLocation(payload: DriverCurrentLocationPayload) {
   if (!io) return;
@@ -316,4 +354,19 @@ export function emitDriverOffRoute(payload: DriverOffRoutePayload) {
 export function emitDriverSegmentRerouted(payload: DriverSegmentReroutedPayload) {
   if (!io) return;
   io.to(roomManagers()).emit('driver:segment-rerouted', payload);
+}
+
+export function emitDriverBreakStarted(payload: DriverBreakStartedPayload) {
+  if (!io) return;
+  io.to(roomManagers()).emit('driver:break-started', payload);
+}
+
+export function emitDriverBreakMovement(payload: DriverBreakMovementPayload) {
+  if (!io) return;
+  io.to(roomManagers()).emit('driver:break-movement', payload);
+}
+
+export function emitDriverBreakEnded(payload: DriverBreakEndedPayload) {
+  if (!io) return;
+  io.to(roomManagers()).emit('driver:break-ended', payload);
 }

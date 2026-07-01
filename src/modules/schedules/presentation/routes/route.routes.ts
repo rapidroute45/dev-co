@@ -19,6 +19,7 @@ import { RouteValidationService } from '../../application/services/routeValidati
 import { ScheduleActivationService } from '../../application/services/scheduleActivation.service';
 import { RouteAutoCompleteService } from '../../application/services/routeAutoComplete.service';
 import { DriverLocationMonitorService } from '../../application/services/driverLocationMonitor.service';
+import { DriverBreakService } from '../../application/services/driverBreak.service';
 import {
   DriverLocationStaleMonitorService,
   startDriverLocationStaleMonitor,
@@ -35,6 +36,8 @@ import { ListRoutesUseCase } from '../../application/use-cases/listRoutes.use-ca
 import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.use-case';
 import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
+import { StartDriverBreakUseCase } from '../../application/use-cases/startDriverBreak.use-case';
+import { EndDriverBreakUseCase } from '../../application/use-cases/endDriverBreak.use-case';
 import { GetRouteTrackingUseCase } from '../../application/use-cases/getRouteTracking.use-case';
 import { GetRoutePlannedSegmentUseCase } from '../../application/use-cases/getRoutePlannedSegment.use-case';
 import { RerouteRouteSegmentUseCase } from '../../application/use-cases/rerouteRouteSegment.use-case';
@@ -56,13 +59,15 @@ const userRepo = new UserRepository();
 const teamRepo = new TeamRepository();
 const notificationRepo = new NotificationRepository();
 const notificationService = new NotificationService(notificationRepo);
+const driverBreakService = new DriverBreakService(routeRepo, userRepo, notificationService);
 const routeAutoComplete = new RouteAutoCompleteService(routeRepo, routeStopRepo);
 const locationMonitor = new DriverLocationMonitorService(
   routeRepo,
   routeStopRepo,
   userRepo,
   routeAutoComplete,
-  notificationService
+  notificationService,
+  driverBreakService
 );
 const staleLocationMonitor = new DriverLocationStaleMonitorService(
   routeRepo,
@@ -208,6 +213,20 @@ const controller = new RouteController(
     teamRepo,
     routeStopEnrichment
   ),
+  new StartDriverBreakUseCase(
+    routeRepo,
+    scheduleRepo,
+    teamRepo,
+    routeStopEnrichment,
+    driverBreakService
+  ),
+  new EndDriverBreakUseCase(
+    routeRepo,
+    scheduleRepo,
+    teamRepo,
+    routeStopEnrichment,
+    driverBreakService
+  ),
   routeDelivery,
   getRouteTracking,
   getRoutePlannedSegment,
@@ -229,6 +248,8 @@ router.post('/:id/assign-driver', teamLeadGuard, controller.assignDriver);
 router.post('/:id/accept', driverGuard, controller.accept);
 router.post('/:id/decline', driverGuard, controller.decline);
 router.post('/:id/start', driverGuard, controller.startRoute);
+router.post('/:id/break/start', driverGuard, controller.startDriverBreak);
+router.post('/:id/break/end', driverGuard, controller.endDriverBreak);
 router.post('/:id/location', driverGuard, controller.reportLocation);
 router.post('/:id/location/batch', driverGuard, controller.reportLocationBatch);
 router.post('/:id/reroute-segment', driverGuard, controller.rerouteSegment);

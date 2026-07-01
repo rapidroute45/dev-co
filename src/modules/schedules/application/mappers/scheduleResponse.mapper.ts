@@ -1,5 +1,6 @@
 import { Schedule } from '../../domain/entities/schedule.entity';
 import { Route } from '../../domain/entities/route.entity';
+import { buildBreakPayload } from '../utils/driverBreak.utils';
 import { RouteStatus } from '../../../../shared/constants/routeStatuses';
 import { formatScheduleDate } from '../utils/scheduleDate';
 import type { DispatchTeamBrief } from '../../../../shared/services/dispatchTeamAttribution.service';
@@ -65,6 +66,7 @@ export function mapRouteToResponse(
       pendingDropoffs: number;
     };
     totalMiles?: number | null;
+    estimatedDriveDurationSec?: number | null;
   }
 ) {
   const driverLocation =
@@ -109,6 +111,7 @@ export function mapRouteToResponse(
     departureTime: route.departureTime,
     arrivalMinutes: route.arrivalMinutes,
     departureMinutes: route.departureMinutes,
+    estimatedDriveDurationSec: extras?.estimatedDriveDurationSec ?? null,
     status: route.status,
     deliveryVerification: route.deliveryVerification,
     overtimeHours: route.overtimeHours,
@@ -121,6 +124,7 @@ export function mapRouteToResponse(
     notes: route.notes,
     startedAt: route.startedAt,
     completedAt: route.completedAt,
+    driverBreak: buildBreakPayload(route),
     createdAt: route.createdAt,
     updatedAt: route.updatedAt,
   };
