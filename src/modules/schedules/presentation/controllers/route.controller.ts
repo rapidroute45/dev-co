@@ -11,6 +11,8 @@ import { ListRoutesUseCase } from '../../application/use-cases/listRoutes.use-ca
 import { ListMyRoutesUseCase } from '../../application/use-cases/listMyRoutes.use-case';
 import { ListMyCompletedRoutesUseCase } from '../../application/use-cases/listMyCompletedRoutes.use-case';
 import { StartRouteUseCase } from '../../application/use-cases/startRoute.use-case';
+import { StartDriverBreakUseCase } from '../../application/use-cases/startDriverBreak.use-case';
+import { EndDriverBreakUseCase } from '../../application/use-cases/endDriverBreak.use-case';
 import { RouteDeliveryUseCase } from '../../application/use-cases/routeDelivery.use-case';
 import { GetRouteTrackingUseCase } from '../../application/use-cases/getRouteTracking.use-case';
 import { GetRoutePlannedSegmentUseCase } from '../../application/use-cases/getRoutePlannedSegment.use-case';
@@ -43,6 +45,8 @@ export class RouteController {
     private listMyRoutesUseCase: ListMyRoutesUseCase,
     private listMyCompletedRoutesUseCase: ListMyCompletedRoutesUseCase,
     private startRouteUseCase: StartRouteUseCase,
+    private startDriverBreakUseCase: StartDriverBreakUseCase,
+    private endDriverBreakUseCase: EndDriverBreakUseCase,
     private routeDeliveryUseCase: RouteDeliveryUseCase,
     private getRouteTrackingUseCase: GetRouteTrackingUseCase,
     private getRoutePlannedSegmentUseCase: GetRoutePlannedSegmentUseCase,
@@ -128,6 +132,41 @@ export class RouteController {
       res.status(200).json({
         success: true,
         message: 'Route started.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  startDriverBreak = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const data = await this.startDriverBreakUseCase.execute(
+        String(req.params.id),
+        req.user.id,
+        req.body ?? {}
+      );
+      res.status(200).json({
+        success: true,
+        message: 'Break started.',
+        data,
+      });
+    } catch (error) {
+      next(error);
+    }
+  };
+
+  endDriverBreak = async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      if (!req.user?.id) return next(new AppError('Unauthorized', 401));
+      const data = await this.endDriverBreakUseCase.execute(
+        String(req.params.id),
+        req.user.id
+      );
+      res.status(200).json({
+        success: true,
+        message: 'Break ended.',
         data,
       });
     } catch (error) {

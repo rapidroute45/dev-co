@@ -63,6 +63,12 @@ export interface RouteDocument {
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;
   driverDwellAlertSentAt?: Date | null;
+  driverBreakStartedAt?: Date | null;
+  driverBreakEndsAt?: Date | null;
+  driverBreakDurationMin?: number | null;
+  driverBreakAnchorLat?: number | null;
+  driverBreakAnchorLng?: number | null;
+  driverBreakMovementAlertSentAt?: Date | null;
   driverOffRouteAlertSentAt?: Date | null;
   driverLocationStaleAlertSentAt?: Date | null;
   createdAt?: Date;
@@ -148,6 +154,12 @@ const RouteSchema = new Schema(
     driverDwellAnchorLng: { type: Number, default: null },
     driverDwellStartedAt: { type: Date, default: null },
     driverDwellAlertSentAt: { type: Date, default: null },
+    driverBreakStartedAt: { type: Date, default: null },
+    driverBreakEndsAt: { type: Date, default: null },
+    driverBreakDurationMin: { type: Number, default: null, min: 1, max: 180 },
+    driverBreakAnchorLat: { type: Number, default: null },
+    driverBreakAnchorLng: { type: Number, default: null },
+    driverBreakMovementAlertSentAt: { type: Date, default: null },
     driverOffRouteAlertSentAt: { type: Date, default: null },
     driverLocationStaleAlertSentAt: { type: Date, default: null },
   },

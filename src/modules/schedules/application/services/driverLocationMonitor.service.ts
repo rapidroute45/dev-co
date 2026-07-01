@@ -13,11 +13,16 @@ import {
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { RouteAutoCompleteService } from './routeAutoComplete.service';
+import { DriverBreakService } from './driverBreak.service';
 import { findStopDwellFromBatch } from '../utils/batchStopDwell';
 import { distanceToPolylineM } from '../utils/distanceToPolyline';
 import { haversineMeters } from '../utils/haversine';
 import { readStopDestinationCoords } from '../utils/stopDestinationCoords';
 import { asLocationDate } from '../utils/locationDates';
+import {
+  buildBreakPayload,
+  isDriverBreakActive,
+} from '../utils/driverBreak.utils';
 import {
   OFF_ROUTE_THRESHOLD_M,
   STATIONARY_DWELL_MS,
@@ -44,7 +49,8 @@ export class DriverLocationMonitorService {
     private routeStopRepo: IRouteStopRepository,
     private userRepo: IUserRepository,
     private routeAutoComplete: RouteAutoCompleteService,
-    private notificationService: NotificationService
+    private notificationService: NotificationService,
+    private driverBreakService: DriverBreakService
   ) {}
 
   /** Evaluate dwell / stop proximity from uploaded batch (full scan + latest point). */
@@ -68,6 +74,14 @@ export class DriverLocationMonitorService {
 
     let currentRoute = route;
     const latest = points[points.length - 1]!;
+
+    currentRoute =
+      (await this.processActiveBreak(currentRoute, latest, ctx, scheduleCity)) ?? currentRoute;
+
+    if (isDriverBreakActive(currentRoute)) {
+      return;
+    }
+
     currentRoute = (await this.trackStationary(currentRoute, latest, ctx)) ?? currentRoute;
 
     try {
@@ -140,6 +154,57 @@ export class DriverLocationMonitorService {
       thresholdMinutes: STATIONARY_DWELL_MINUTES,
       alertSent: Boolean(route.driverDwellAlertSentAt),
     };
+  }
+
+  buildBreakPayload(route: Route) {
+    return buildBreakPayload(route);
+  }
+
+  private async processActiveBreak(
+    route: Route,
+    point: LocationPoint,
+    ctx: MonitorContext,
+    scheduleCity: string | null
+  ): Promise<Route | null> {
+    if (!route.id || !isDriverBreakActive(route)) return route;
+
+    const endsAt = asLocationDate(route.driverBreakEndsAt);
+    if (endsAt && Date.now() >= endsAt.getTime()) {
+      return this.driverBreakService.endBreak(route, 'timer', scheduleCity);
+    }
+
+    const anchorLat = route.driverBreakAnchorLat;
+    const anchorLng = route.driverBreakAnchorLng;
+    if (anchorLat == null || anchorLng == null) return route;
+
+    const movedMeters = haversineMeters(point.lat, point.lng, anchorLat, anchorLng);
+    if (movedMeters <= STATIONARY_RADIUS_M) return route;
+
+    if (!route.driverBreakMovementAlertSentAt) {
+      try {
+        await this.driverBreakService.notifyBreakMovement(
+          route,
+          scheduleCity,
+          point.lat,
+          point.lng
+        );
+      } catch (error) {
+        console.warn('[location-monitor] break movement alert failed', {
+          routeId: ctx.routeId,
+          error,
+        });
+      }
+    }
+
+    try {
+      return this.driverBreakService.endBreak(route, 'movement', scheduleCity);
+    } catch (error) {
+      console.warn('[location-monitor] break end on movement failed', {
+        routeId: ctx.routeId,
+        error,
+      });
+      return route;
+    }
   }
 
   private async trackStationary(route: Route, point: LocationPoint, ctx: MonitorContext) {

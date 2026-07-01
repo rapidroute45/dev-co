@@ -50,6 +50,12 @@ export interface RouteProps {
   driverDwellAnchorLng?: number | null;
   driverDwellStartedAt?: Date | null;
   driverDwellAlertSentAt?: Date | null;
+  driverBreakStartedAt?: Date | null;
+  driverBreakEndsAt?: Date | null;
+  driverBreakDurationMin?: number | null;
+  driverBreakAnchorLat?: number | null;
+  driverBreakAnchorLng?: number | null;
+  driverBreakMovementAlertSentAt?: Date | null;
   driverOffRouteAlertSentAt?: Date | null;
   driverLocationStaleAlertSentAt?: Date | null;
   createdAt?: Date;
@@ -202,6 +208,24 @@ export class Route {
   }
   get driverDwellAlertSentAt() {
     return this.props.driverDwellAlertSentAt ?? null;
+  }
+  get driverBreakStartedAt() {
+    return this.props.driverBreakStartedAt ?? null;
+  }
+  get driverBreakEndsAt() {
+    return this.props.driverBreakEndsAt ?? null;
+  }
+  get driverBreakDurationMin() {
+    return this.props.driverBreakDurationMin ?? null;
+  }
+  get driverBreakAnchorLat() {
+    return this.props.driverBreakAnchorLat ?? null;
+  }
+  get driverBreakAnchorLng() {
+    return this.props.driverBreakAnchorLng ?? null;
+  }
+  get driverBreakMovementAlertSentAt() {
+    return this.props.driverBreakMovementAlertSentAt ?? null;
   }
   get driverOffRouteAlertSentAt() {
     return this.props.driverOffRouteAlertSentAt ?? null;

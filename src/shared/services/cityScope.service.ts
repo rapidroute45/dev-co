@@ -106,7 +106,7 @@ export function canUseGlobalLocationScope(actor?: CityActor): boolean {
 
 /**
  * Strip global location query params for non-managers.
- * Dispatch team keeps `city` for mergeCityListFilter enforcement; everyone else loses both.
+ * Dispatch team keeps `city` and `state` for mergeCityListFilter enforcement.
  */
 export function resolveGlobalLocationQuery(
   actor: CityActor | undefined,
@@ -115,11 +115,20 @@ export function resolveGlobalLocationQuery(
   if (canUseGlobalLocationScope(actor)) return query;
 
   const next = { ...query };
-  delete next.state;
 
-  if (actor?.role !== UserRole.DISPATCH_TEAM) {
-    delete next.city;
+  if (actor?.role === UserRole.DISPATCH_TEAM) {
+    return next;
   }
 
+  delete next.state;
+  delete next.city;
   return next;
+}
+
+/** Reject state filter for roles that cannot use location scope. */
+export function enforceActorState(actor: CityActor | undefined, requestedState?: string): void {
+  if (!requestedState?.trim()) return;
+  if (canUseGlobalLocationScope(actor)) return;
+  if (actor?.role === UserRole.DISPATCH_TEAM) return;
+  throw new AppError('State filter is not allowed for your role.', 403);
 }

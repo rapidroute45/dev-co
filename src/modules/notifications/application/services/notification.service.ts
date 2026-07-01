@@ -1117,6 +1117,170 @@ export class NotificationService {
     );
   }
 
+  async notifyDriverBreakStarted(input: {
+    recipientIds: string[];
+    routeId: string;
+    scheduleId: string;
+    driverId: string;
+    driverName: string;
+    durationMinutes: number;
+    lat: number | null;
+    lng: number | null;
+    city?: string | null;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      routeId: input.routeId,
+      scheduleId: input.scheduleId,
+      driverId: input.driverId,
+      driverName: input.driverName,
+      durationMinutes: input.durationMinutes,
+      lat: input.lat,
+      lng: input.lng,
+      city: input.city ?? null,
+      deepLink: `/routes/tracking/${input.routeId}`,
+    };
+    const title = 'Driver on break';
+    const message = `${input.driverName} started a ${input.durationMinutes} min break.`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.DRIVER_BREAK_STARTED,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(
+      recipients,
+      title,
+      message,
+      payload,
+      NotificationType.DRIVER_BREAK_STARTED
+    );
+  }
+
+  async notifyDriverBreakMovement(input: {
+    recipientIds: string[];
+    routeId: string;
+    scheduleId: string;
+    driverId: string;
+    driverName: string;
+    lat: number;
+    lng: number;
+    city?: string | null;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const payload = {
+      routeId: input.routeId,
+      scheduleId: input.scheduleId,
+      driverId: input.driverId,
+      driverName: input.driverName,
+      lat: input.lat,
+      lng: input.lng,
+      city: input.city ?? null,
+      deepLink: `/routes/tracking/${input.routeId}`,
+    };
+    const title = 'Driver moving during break';
+    const message = `${input.driverName} is moving during a declared break.`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.DRIVER_BREAK_MOVEMENT,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(
+      recipients,
+      title,
+      message,
+      payload,
+      NotificationType.DRIVER_BREAK_MOVEMENT
+    );
+  }
+
+  async notifyDriverBreakEnded(input: {
+    recipientIds: string[];
+    routeId: string;
+    scheduleId: string;
+    driverId: string;
+    driverName: string;
+    reason: 'manual' | 'timer' | 'movement';
+    lat: number | null;
+    lng: number | null;
+    city?: string | null;
+  }): Promise<void> {
+    const recipients = [...new Set(input.recipientIds.filter(Boolean))];
+    if (recipients.length === 0) return;
+
+    const reasonLabel =
+      input.reason === 'timer'
+        ? 'timer expired'
+        : input.reason === 'movement'
+          ? 'resumed driving'
+          : 'ended manually';
+
+    const payload = {
+      routeId: input.routeId,
+      scheduleId: input.scheduleId,
+      driverId: input.driverId,
+      driverName: input.driverName,
+      reason: input.reason,
+      lat: input.lat,
+      lng: input.lng,
+      city: input.city ?? null,
+      deepLink: `/routes/tracking/${input.routeId}`,
+    };
+    const title = 'Driver break ended';
+    const message = `${input.driverName} ended break (${reasonLabel}).`;
+
+    await Promise.all(
+      recipients.map((recipientId) =>
+        this.notificationRepo.save(
+          new Notification({
+            recipientId,
+            type: NotificationType.DRIVER_BREAK_ENDED,
+            title,
+            message,
+            payload,
+            read: false,
+            pushSent: false,
+          })
+        )
+      )
+    );
+
+    void this.sendPushIfSupported(
+      recipients,
+      title,
+      message,
+      payload,
+      NotificationType.DRIVER_BREAK_ENDED
+    );
+  }
+
   private async sendPushIfSupported(
     recipientIds: string[],
     title: string,
