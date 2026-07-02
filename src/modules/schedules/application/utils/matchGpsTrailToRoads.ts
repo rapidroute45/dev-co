@@ -195,21 +195,11 @@ export async function snapSinglePointToRoads(point: LatLng): Promise<LatLng> {
   return result.snapped ? result.points[0] ?? point : point;
 }
 
-function trimAnchorPrefix(matched: LatLng[], batchStart: LatLng): LatLng[] {
+/** Drop snapped duplicate of anchor; keep Google/OSRM road geometry from anchor to new GPS. */
+function trimMatchedAfterAnchor(matched: LatLng[]): LatLng[] {
   if (matched.length <= 1) return matched;
-
-  let bestIndex = 0;
-  let bestDistanceM = Infinity;
-  for (let i = 0; i < matched.length; i += 1) {
-    const candidate = matched[i]!;
-    const distanceM = haversineMeters(candidate.lat, candidate.lng, batchStart.lat, batchStart.lng);
-    if (distanceM < bestDistanceM) {
-      bestDistanceM = distanceM;
-      bestIndex = i;
-    }
-  }
-
-  return matched.slice(bestIndex);
+  const trimmed = matched.slice(1);
+  return trimmed.length >= 1 ? trimmed : matched;
 }
 
 async function matchSinglePoint(
@@ -409,7 +399,7 @@ export async function matchGpsTrailToRoads(
   if (hasGoogleMapsApiKey()) {
     const google = await matchWithGoogle(coords);
     if (google.ok) {
-      matchedCoords = anchorUsed ? trimAnchorPrefix(google.points, batchStart) : google.points;
+      matchedCoords = anchorUsed ? trimMatchedAfterAnchor(google.points) : google.points;
       provider = 'google';
     }
   }
@@ -417,7 +407,7 @@ export async function matchGpsTrailToRoads(
   if (provider === 'raw') {
     const osrm = await matchWithOsrm(coords);
     if (osrm.ok) {
-      matchedCoords = anchorUsed ? trimAnchorPrefix(osrm.points, batchStart) : osrm.points;
+      matchedCoords = anchorUsed ? trimMatchedAfterAnchor(osrm.points) : osrm.points;
       provider = 'osrm';
     } else if (anchorUsed) {
       matchedCoords = coords.slice(1);
