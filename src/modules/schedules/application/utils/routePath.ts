@@ -12,8 +12,10 @@ export const TRAIL_MAX_SEGMENT_SPEED_MPS = 42;
 
 type RoutePathPoint = { lat: number; lng: number; recordedAt: Date };
 
-function pathPointKey(recordedAt: Date): string {
-  return recordedAt.toISOString();
+function pathPointKey(point: RoutePathPoint): string {
+  const lat = point.lat.toFixed(5);
+  const lng = point.lng.toFixed(5);
+  return `${point.recordedAt.toISOString()}|${lat}|${lng}`;
 }
 
 function dedupeIncomingAgainstTail(existing: RoutePathPoint[], incoming: RoutePathPoint[]) {
@@ -23,16 +25,33 @@ function dedupeIncomingAgainstTail(existing: RoutePathPoint[], incoming: RoutePa
   let startIndex = 0;
   while (startIndex < incoming.length) {
     const next = incoming[startIndex]!;
-    if (
-      haversineMeters(tail.lat, tail.lng, next.lat, next.lng) > MERGE_TRAIL_DEDUP_M ||
-      next.recordedAt.getTime() > tail.recordedAt.getTime()
-    ) {
+    if (next.recordedAt.getTime() > tail.recordedAt.getTime()) {
+      break;
+    }
+    const distanceM = haversineMeters(tail.lat, tail.lng, next.lat, next.lng);
+    if (distanceM > MERGE_TRAIL_DEDUP_M) {
       break;
     }
     startIndex += 1;
   }
 
   return incoming.slice(startIndex);
+}
+
+/** Drop incoming points that would regress the stored timeline without meaningful movement. */
+export function filterRegressiveIncomingPoints(
+  existing: RoutePathPoint[],
+  incoming: RoutePathPoint[]
+): RoutePathPoint[] {
+  if (existing.length === 0 || incoming.length === 0) return incoming;
+
+  const tail = existing[existing.length - 1]!;
+  return incoming.filter((point) => {
+    if (point.recordedAt.getTime() > tail.recordedAt.getTime()) return true;
+    return (
+      haversineMeters(tail.lat, tail.lng, point.lat, point.lng) > MERGE_TRAIL_DEDUP_M
+    );
+  });
 }
 
 /** Drop segments that imply impossible driving speed (bad snap / batch seams). */
@@ -46,6 +65,10 @@ export function filterTrailSpeedOutliers(
   for (let i = 1; i < points.length; i += 1) {
     const prev = kept[kept.length - 1]!;
     const next = points[i]!;
+    if (next.recordedAt.getTime() === prev.recordedAt.getTime()) {
+      kept.push(next);
+      continue;
+    }
     const dtSec = Math.max(0.001, (next.recordedAt.getTime() - prev.recordedAt.getTime()) / 1000);
     const distanceM = haversineMeters(prev.lat, prev.lng, next.lat, next.lng);
     if (distanceM / dtSec <= maxSpeedMps) {
@@ -63,14 +86,15 @@ export function mergeRoutePathPoints(
   maxPoints = MAX_STORED_ROUTE_PATH_POINTS
 ): RoutePathPoint[] {
   const trimmedIncoming = dedupeIncomingAgainstTail(existing, incoming);
+  const nonRegressive = filterRegressiveIncomingPoints(existing, trimmedIncoming);
   const byKey = new Map<string, RoutePathPoint>();
 
-  for (const point of [...existing, ...trimmedIncoming]) {
+  for (const point of [...existing, ...nonRegressive]) {
     const recordedAt =
       point.recordedAt instanceof Date && !Number.isNaN(point.recordedAt.getTime())
         ? point.recordedAt
         : new Date();
-    byKey.set(pathPointKey(recordedAt), {
+    byKey.set(pathPointKey({ lat: point.lat, lng: point.lng, recordedAt }), {
       lat: point.lat,
       lng: point.lng,
       recordedAt,

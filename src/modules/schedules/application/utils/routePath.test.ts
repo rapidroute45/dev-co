@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { filterTrailSpeedOutliers, mergeRoutePathPoints } from './routePath';
+import {
+  filterRegressiveIncomingPoints,
+  filterTrailSpeedOutliers,
+  mergeRoutePathPoints,
+} from './routePath';
 
 test('mergeRoutePathPoints skips incoming points stacked on the existing tail', () => {
   const t0 = new Date('2026-06-23T10:00:00.000Z');
@@ -15,6 +19,15 @@ test('mergeRoutePathPoints skips incoming points stacked on the existing tail', 
   const merged = mergeRoutePathPoints(existing, incoming);
   assert.equal(merged.length, 2);
   assert.equal(merged[1]!.lat, 31.521);
+});
+
+test('filterRegressiveIncomingPoints drops regressive timestamps', () => {
+  const t0 = new Date('2026-06-23T10:00:00.000Z');
+  const t1 = new Date('2026-06-23T10:00:30.000Z');
+  const existing = [{ lat: 31.52, lng: 74.35, recordedAt: t1 }];
+  const incoming = [{ lat: 31.52001, lng: 74.35001, recordedAt: t0 }];
+
+  assert.equal(filterRegressiveIncomingPoints(existing, incoming).length, 0);
 });
 
 test('filterTrailSpeedOutliers drops impossible driving segments', () => {

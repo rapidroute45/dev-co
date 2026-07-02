@@ -27,6 +27,11 @@ import { distanceToPolylineM } from '../utils/distanceToPolyline';
 import { OFF_ROUTE_THRESHOLD_M } from '../constants/driverLocationMonitor.constants';
 import { matchGpsTrailToRoads, snapSinglePointToRoads } from '../utils/matchGpsTrailToRoads';
 import {
+  interpolateTrailBetweenAnchors,
+  shouldRejectSnapRatio,
+} from '../utils/trailDeadReckoning';
+import { snapGpsTrailToPolyline } from '../utils/snapGpsTrailToPolyline';
+import {
   collapseStationaryBatch,
   isStationaryGpsBatch,
   shouldSkipTrailAppend,
@@ -521,22 +526,23 @@ export class RouteDeliveryUseCase {
       throw new AppError('Start the route before sharing location.', 400);
     }
 
-    const ordered = [...points]
-      .map((point) => {
-        const lat = Number(point.lat);
-        const lng = Number(point.lng);
-        const rawLat = Number.isFinite(Number(point.rawLat)) ? Number(point.rawLat) : lat;
-        const rawLng = Number.isFinite(Number(point.rawLng)) ? Number(point.rawLng) : lng;
-        return {
-          lat,
-          lng,
-          rawLat,
-          rawLng,
-          recordedAt: parseClientRecordedAt(point.recordedAt),
-        };
-      })
-      .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
-      .sort((a, b) => a.recordedAt.getTime() - b.recordedAt.getTime());
+    const ordered = normalizeBatchTimestamps(
+      [...points]
+        .map((point) => {
+          const lat = Number(point.lat);
+          const lng = Number(point.lng);
+          const rawLat = Number.isFinite(Number(point.rawLat)) ? Number(point.rawLat) : lat;
+          const rawLng = Number.isFinite(Number(point.rawLng)) ? Number(point.rawLng) : lng;
+          return {
+            lat,
+            lng,
+            rawLat,
+            rawLng,
+            recordedAt: parseClientRecordedAt(point.recordedAt),
+          };
+        })
+        .filter((point) => Number.isFinite(point.lat) && Number.isFinite(point.lng))
+    );
 
     if (ordered.length === 0) {
       throw new AppError('No valid location points in batch.', 400);
@@ -575,7 +581,13 @@ export class RouteDeliveryUseCase {
       lng: point.lng,
       recordedAt: point.recordedAt,
     }));
-    let roadMatchProvider: 'google' | 'osrm' | 'planned' | 'raw' | 'stationary' = 'raw';
+    let roadMatchProvider:
+      | 'google'
+      | 'osrm'
+      | 'planned'
+      | 'raw'
+      | 'stationary'
+      | 'interpolated' = 'raw';
     const stationary = isStationaryGpsBatch(rawPathPoints);
 
     if (stationary) {
@@ -600,7 +612,20 @@ export class RouteDeliveryUseCase {
         incomingPath = roadMatch.points;
         roadMatchProvider = roadMatch.provider;
 
-        if (roadMatchProvider === 'raw') {
+        const snapInputCount = roadMatch.inputCount;
+        const snapRejectedRatio =
+          (roadMatchProvider === 'google' || roadMatchProvider === 'osrm') &&
+          shouldRejectSnapRatio(snapInputCount, roadMatch.outputCount);
+
+        if (snapRejectedRatio) {
+          const endAnchor = {
+            lat: rawPathPoints[rawPathPoints.length - 1]!.lat,
+            lng: rawPathPoints[rawPathPoints.length - 1]!.lng,
+            recordedAt: rawPathPoints[rawPathPoints.length - 1]!.recordedAt,
+          };
+          incomingPath = interpolateTrailBetweenAnchors(lastPathPoint, endAnchor, rawPathPoints);
+          roadMatchProvider = 'interpolated';
+        } else if (roadMatchProvider === 'raw') {
           const mobileDisplayPath = plausible.map((point) => ({
             lat: point.lat,
             lng: point.lng,
@@ -617,6 +642,38 @@ export class RouteDeliveryUseCase {
           if (hasMobileSnap) {
             incomingPath = mobileDisplayPath;
             roadMatchProvider = 'planned';
+          } else if (segmentPolyline.length >= 2) {
+            const plannedSnapped = snapGpsTrailToPolyline(
+              rawPathPoints,
+              segmentPolyline,
+              route.driverRouteProgressIndex ?? 0
+            );
+            if (plannedSnapped.length >= 2) {
+              incomingPath = plannedSnapped;
+              roadMatchProvider = 'planned';
+            } else if (lastPathPoint) {
+              incomingPath = interpolateTrailBetweenAnchors(
+                lastPathPoint,
+                {
+                  lat: rawPathPoints[rawPathPoints.length - 1]!.lat,
+                  lng: rawPathPoints[rawPathPoints.length - 1]!.lng,
+                  recordedAt: rawPathPoints[rawPathPoints.length - 1]!.recordedAt,
+                },
+                rawPathPoints
+              );
+              roadMatchProvider = 'interpolated';
+            }
+          } else if (lastPathPoint) {
+            incomingPath = interpolateTrailBetweenAnchors(
+              lastPathPoint,
+              {
+                lat: rawPathPoints[rawPathPoints.length - 1]!.lat,
+                lng: rawPathPoints[rawPathPoints.length - 1]!.lng,
+                recordedAt: rawPathPoints[rawPathPoints.length - 1]!.recordedAt,
+              },
+              rawPathPoints
+            );
+            roadMatchProvider = 'interpolated';
           }
         }
       } catch (error) {
@@ -743,7 +800,7 @@ export class RouteDeliveryUseCase {
   }
 }
 
-function parseClientRecordedAt(value?: string | Date | null): Date {
+function parseClientRecordedAt(value?: string | Date | null): Date | null {
   if (value instanceof Date && !Number.isNaN(value.getTime())) {
     return value;
   }
@@ -753,5 +810,35 @@ function parseClientRecordedAt(value?: string | Date | null): Date {
       return new Date(parsed);
     }
   }
-  return new Date();
+  return null;
+}
+
+/** Sort batch points and repair missing timestamps with monotonic 1s spacing. */
+function normalizeBatchTimestamps<
+  T extends { recordedAt: Date | null; lat: number; lng: number; rawLat: number; rawLng: number },
+>(points: T[]): Array<Omit<T, 'recordedAt'> & { recordedAt: Date }> {
+  const withIndex = points.map((point, index) => ({ point, index }));
+  withIndex.sort((a, b) => {
+    const aMs = a.point.recordedAt?.getTime();
+    const bMs = b.point.recordedAt?.getTime();
+    if (aMs != null && bMs != null && aMs !== bMs) return aMs - bMs;
+    if (aMs != null && bMs == null) return -1;
+    if (aMs == null && bMs != null) return 1;
+    return a.index - b.index;
+  });
+
+  const baseMs = Date.now() - withIndex.length * 1000;
+  let lastMs = baseMs - 1000;
+
+  return withIndex.map(({ point, index }, position) => {
+    let recordedAt = point.recordedAt;
+    if (!recordedAt || Number.isNaN(recordedAt.getTime())) {
+      recordedAt = new Date(baseMs + position * 1000);
+    }
+    if (recordedAt.getTime() <= lastMs) {
+      recordedAt = new Date(lastMs + 1000);
+    }
+    lastMs = recordedAt.getTime();
+    return { ...point, recordedAt };
+  });
 }
