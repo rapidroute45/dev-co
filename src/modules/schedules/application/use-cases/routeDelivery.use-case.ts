@@ -569,7 +569,7 @@ export class RouteDeliveryUseCase {
       lng: point.lng,
       recordedAt: point.recordedAt,
     }));
-    let roadMatchProvider: 'google' | 'osrm' | 'raw' | 'stationary' = 'raw';
+    let roadMatchProvider: 'google' | 'osrm' | 'planned' | 'raw' | 'stationary' = 'raw';
     const stationary = isStationaryGpsBatch(rawPathPoints);
 
     if (stationary) {
@@ -586,7 +586,11 @@ export class RouteDeliveryUseCase {
         lastPathPoint != null ? { lat: lastPathPoint.lat, lng: lastPathPoint.lng } : null;
 
       try {
-        const roadMatch = await matchGpsTrailToRoads(rawPathPoints, { anchorPoint });
+        const roadMatch = await matchGpsTrailToRoads(rawPathPoints, {
+          anchorPoint,
+          plannedPolyline: segmentPolyline,
+          startProgressIndex: route.driverRouteProgressIndex ?? 0,
+        });
         incomingPath = roadMatch.points;
         roadMatchProvider = roadMatch.provider;
       } catch (error) {

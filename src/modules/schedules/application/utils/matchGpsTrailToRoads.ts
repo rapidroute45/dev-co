@@ -2,18 +2,26 @@ import { GOOGLE_MAPS_API_KEY, hasGoogleMapsApiKey } from '../../../../shared/con
 import { distanceToPolylineM } from './distanceToPolyline';
 import { haversineMeters } from './haversine';
 import type { LatLng } from './osrmDrivingPath';
+import {
+  countSnappedToPolyline,
+  snapGpsTrailToPolyline,
+} from './snapGpsTrailToPolyline';
 
 const GOOGLE_SNAP_CHUNK_SIZE = 100;
+const OSRM_MATCH_CHUNK_SIZE = 12;
 const SNAP_QUALITY_THRESHOLD_M = 30;
 const DEFAULT_ANCHOR_MAX_DISTANCE_M = 100;
+const PLANNED_SNAP_MIN_POINTS = 2;
 
 export type GpsTrailPoint = { lat: number; lng: number; recordedAt: Date };
 
-export type RoadMatchProvider = 'google' | 'osrm' | 'raw';
+export type RoadMatchProvider = 'google' | 'osrm' | 'planned' | 'raw';
 
 export type MatchGpsTrailOptions = {
   anchorPoint?: LatLng | null;
   maxAnchorDistanceM?: number;
+  plannedPolyline?: LatLng[] | null;
+  startProgressIndex?: number;
 };
 
 export type RoadMatchResult = {
@@ -58,6 +66,29 @@ function appendMatchedSegment(existing: LatLng[], segment: LatLng[]) {
   } else {
     existing.push(...segment);
   }
+}
+
+/** Build overlapping OSRM match chunks for long GPS batches. */
+export function buildOsrmMatchChunks(points: LatLng[], chunkSize = OSRM_MATCH_CHUNK_SIZE): LatLng[][] {
+  if (points.length < 2) return [];
+  const chunks: LatLng[][] = [];
+  let start = 0;
+
+  while (start < points.length) {
+    const end = Math.min(start + chunkSize, points.length);
+    const chunk = points.slice(start, end);
+    if (chunk.length >= 2) {
+      chunks.push(chunk);
+    }
+    if (end >= points.length) break;
+    start = end - 1;
+  }
+
+  return chunks;
+}
+
+function formatOsrmCoord(point: LatLng) {
+  return `${point.lng.toFixed(6)},${point.lat.toFixed(6)}`;
 }
 
 /** True when output looks road-snapped (denser or input hugs the polyline). */
@@ -210,10 +241,10 @@ async function matchWithGoogle(coords: LatLng[]): Promise<{ points: LatLng[]; ok
   return { points: matched, ok: true };
 }
 
-async function matchWithOsrm(points: LatLng[]): Promise<{ points: LatLng[]; ok: boolean }> {
-  if (points.length < 2) return { points, ok: false };
+async function matchOsrmChunk(chunk: LatLng[]): Promise<{ points: LatLng[]; ok: boolean }> {
+  if (chunk.length < 2) return { points: chunk, ok: false };
 
-  const coordString = points.map((p) => `${p.lng},${p.lat}`).join(';');
+  const coordString = chunk.map(formatOsrmCoord).join(';');
   const url = `https://router.project-osrm.org/match/v1/driving/${coordString}?overview=full&geometries=geojson`;
 
   try {
@@ -224,7 +255,7 @@ async function matchWithOsrm(points: LatLng[]): Promise<{ points: LatLng[]; ok: 
         status: response.status,
         body: body.slice(0, 200),
       });
-      return { points, ok: false };
+      return { points: chunk, ok: false };
     }
 
     const data = (await response.json()) as {
@@ -239,22 +270,68 @@ async function matchWithOsrm(points: LatLng[]): Promise<{ points: LatLng[]; ok: 
         code: data.code,
         message: data.message,
       });
-      return { points, ok: false };
+      return { points: chunk, ok: false };
     }
 
     const matched = coords.map(([lng, lat]) => ({ lat, lng }));
-    if (!looksSnappedToRoads(points, matched)) {
-      return { points, ok: false };
+    if (!looksSnappedToRoads(chunk, matched)) {
+      return { points: chunk, ok: false };
     }
 
     return { points: matched, ok: true };
   } catch (error) {
     console.warn('[road-match] OSRM match request failed', { error });
-    return { points, ok: false };
+    return { points: chunk, ok: false };
   }
 }
 
-/** Google Snap-to-Roads with OSRM match fallback; returns provider used. */
+async function matchWithOsrm(points: LatLng[]): Promise<{ points: LatLng[]; ok: boolean }> {
+  if (points.length < 2) return { points, ok: false };
+
+  const chunks = buildOsrmMatchChunks(points);
+  if (chunks.length === 0) return { points, ok: false };
+
+  const matched: LatLng[] = [];
+  for (const chunk of chunks) {
+    const result = await matchOsrmChunk(chunk);
+    if (!result.ok) {
+      return { points, ok: false };
+    }
+    appendMatchedSegment(matched, result.points);
+  }
+
+  if (matched.length < 2 || !looksSnappedToRoads(points, matched)) {
+    return { points, ok: false };
+  }
+
+  return { points: matched, ok: true };
+}
+
+function matchWithPlannedPolyline(
+  points: GpsTrailPoint[],
+  polyline: LatLng[],
+  startProgressIndex: number
+): { points: GpsTrailPoint[]; ok: boolean } {
+  const snapped = snapGpsTrailToPolyline(points, polyline, startProgressIndex);
+  if (snapped.length < PLANNED_SNAP_MIN_POINTS) {
+    return { points, ok: false };
+  }
+
+  const snappedCount = countSnappedToPolyline(points, snapped, polyline);
+  if (snappedCount < PLANNED_SNAP_MIN_POINTS) {
+    return { points, ok: false };
+  }
+
+  const inputCoords = points.map((point) => ({ lat: point.lat, lng: point.lng }));
+  const outputCoords = snapped.map((point) => ({ lat: point.lat, lng: point.lng }));
+  if (!looksSnappedToRoads(inputCoords, outputCoords)) {
+    return { points, ok: false };
+  }
+
+  return { points: snapped, ok: true };
+}
+
+/** Google Snap-to-Roads with OSRM and planned polyline fallbacks. */
 export async function matchGpsTrailToRoads(
   points: GpsTrailPoint[],
   options: MatchGpsTrailOptions = {}
@@ -297,6 +374,7 @@ export async function matchGpsTrailToRoads(
 
   let provider: RoadMatchProvider = 'raw';
   let matchedCoords: LatLng[] = coords;
+  let matchedPoints: GpsTrailPoint[] = valid;
 
   if (hasGoogleMapsApiKey()) {
     const google = await matchWithGoogle(coords);
@@ -316,6 +394,46 @@ export async function matchGpsTrailToRoads(
     }
   }
 
+  if (provider === 'raw') {
+    const plannedPolyline = options.plannedPolyline ?? null;
+    if (plannedPolyline && plannedPolyline.length >= 2) {
+      const planned = matchWithPlannedPolyline(
+        valid,
+        plannedPolyline,
+        options.startProgressIndex ?? 0
+      );
+      if (planned.ok) {
+        matchedPoints = planned.points;
+        provider = 'planned';
+      }
+    }
+  }
+
+  if (provider === 'raw') {
+    return {
+      points: valid,
+      provider: 'raw',
+      inputCount: coords.length,
+      outputCount: valid.length,
+    };
+  }
+
+  if (provider === 'planned') {
+    console.log('[road-match]', {
+      provider,
+      input: coords.length,
+      output: matchedPoints.length,
+      anchorUsed,
+    });
+
+    return {
+      points: matchedPoints,
+      provider,
+      inputCount: coords.length,
+      outputCount: matchedPoints.length,
+    };
+  }
+
   if (matchedCoords.length < 2) {
     return {
       points: valid,
@@ -325,22 +443,19 @@ export async function matchGpsTrailToRoads(
     };
   }
 
-  const timed =
-    provider === 'raw'
-      ? valid
-      : assignInterpolatedTimestamps(matchedCoords, startAt, endAt);
+  matchedPoints = assignInterpolatedTimestamps(matchedCoords, startAt, endAt);
 
   console.log('[road-match]', {
     provider,
     input: coords.length,
-    output: timed.length,
+    output: matchedPoints.length,
     anchorUsed,
   });
 
   return {
-    points: timed,
+    points: matchedPoints,
     provider,
     inputCount: coords.length,
-    outputCount: timed.length,
+    outputCount: matchedPoints.length,
   };
 }
