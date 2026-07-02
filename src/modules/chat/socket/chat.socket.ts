@@ -293,6 +293,18 @@ export type DriverStationaryPayload = {
   lng: number;
   dwellMinutes: number;
   driverName?: string;
+  outsideStop?: boolean;
+};
+
+export type DispatchAlertPayload = {
+  kind: 'driver_stationary_outside_stop';
+  routeId: string;
+  scheduleId: string;
+  driverId: string;
+  lat: number;
+  lng: number;
+  dwellMinutes: number;
+  driverName?: string;
 };
 
 export type DriverOffRoutePayload = {
@@ -344,6 +356,24 @@ export function emitDriverCurrentLocation(payload: DriverCurrentLocationPayload)
 export function emitDriverStationary(payload: DriverStationaryPayload) {
   if (!io) return;
   io.to(roomManagers()).emit('driver:stationary', payload);
+}
+
+/** Dispatch portal alert wrapper (stationary outside stop, etc.). */
+export function emitDispatchAlert(payload: DispatchAlertPayload) {
+  if (!io) return;
+  io.to(roomManagers()).emit('dispatch:alert', payload);
+  if (payload.kind === 'driver_stationary_outside_stop') {
+    emitDriverStationary({
+      routeId: payload.routeId,
+      scheduleId: payload.scheduleId,
+      driverId: payload.driverId,
+      lat: payload.lat,
+      lng: payload.lng,
+      dwellMinutes: payload.dwellMinutes,
+      driverName: payload.driverName,
+      outsideStop: true,
+    });
+  }
 }
 
 export function emitDriverOffRoute(payload: DriverOffRoutePayload) {

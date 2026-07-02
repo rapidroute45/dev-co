@@ -7,14 +7,16 @@ import { IUserRepository } from '../../../auth/domain/interfaces/user-repository
 import { NotificationService } from '../../../notifications/application/services/notification.service';
 import {
   emitDriverOffRoute,
-  emitDriverStationary,
+  emitDispatchAlert,
   emitRouteUpdated,
 } from '../../../chat/socket/chat.socket';
 import { IRouteRepository } from '../../domain/interfaces/route-repository.interface';
 import { IRouteStopRepository } from '../../domain/interfaces/route-stop-repository.interface';
 import { RouteAutoCompleteService } from './routeAutoComplete.service';
 import { DriverBreakService } from './driverBreak.service';
-import { findStopDwellFromBatch } from '../utils/batchStopDwell';
+import { findStopDwellFromBatch, batchPointsForDwellWindow } from '../utils/batchStopDwell';
+import { isStationarySpeed, readRawCoords } from '../utils/batchLocationMetrics';
+import { isNearAnyPendingStop } from '../utils/stopGeofence';
 import { distanceToPolylineM } from '../utils/distanceToPolyline';
 import { haversineMeters } from '../utils/haversine';
 import { readStopDestinationCoords } from '../utils/stopDestinationCoords';
@@ -24,12 +26,13 @@ import {
   isDriverBreakActive,
 } from '../utils/driverBreak.utils';
 import {
+  AUTO_COMPLETE_MAX_SPEED_MPS,
+  AUTO_COMPLETE_PROXIMITY_RADIUS_M,
   OFF_ROUTE_THRESHOLD_M,
   STATIONARY_DWELL_MS,
   STATIONARY_DWELL_MINUTES,
   STATIONARY_RADIUS_M,
   STOP_DWELL_MS,
-  STOP_PROXIMITY_RADIUS_M,
 } from '../constants/driverLocationMonitor.constants';
 import type { Route } from '../../domain/entities/route.entity';
 
@@ -82,7 +85,7 @@ export class DriverLocationMonitorService {
       return;
     }
 
-    currentRoute = (await this.trackStationary(currentRoute, latest, ctx)) ?? currentRoute;
+    currentRoute = (await this.trackStationary(currentRoute, latest, points, ctx)) ?? currentRoute;
 
     try {
       await this.scanBatchForStopDwell(currentRoute, points, ctx);
@@ -91,7 +94,7 @@ export class DriverLocationMonitorService {
     }
 
     try {
-      await this.trackStopProximity(currentRoute, latest, ctx);
+      await this.trackStopProximity(currentRoute, latest, points, ctx);
     } catch (error) {
       console.warn('[location-monitor] stop proximity failed', {
         routeId: ctx.routeId,
@@ -207,21 +210,48 @@ export class DriverLocationMonitorService {
     }
   }
 
-  private async trackStationary(route: Route, point: LocationPoint, ctx: MonitorContext) {
+  private async trackStationary(
+    route: Route,
+    point: LocationPoint,
+    batchPoints: LocationPoint[],
+    ctx: MonitorContext
+  ) {
     if (!route.id) return route;
 
+    const stops = await this.routeStopRepo.findByRouteId(route.id);
+    const pendingDropoffs = stops.filter(
+      (stop) => stop.type === 'dropoff' && stop.status === RouteStopStatus.PENDING
+    );
+
+    if (isNearAnyPendingStop(point, pendingDropoffs, AUTO_COMPLETE_PROXIMITY_RADIUS_M)) {
+      if (route.driverDwellAnchorLat != null || route.driverDwellStartedAt != null) {
+        const cleared = await this.routeRepo.update(route.id, {
+          driverDwellAnchorLat: null,
+          driverDwellAnchorLng: null,
+          driverDwellStartedAt: null,
+          driverDwellAlertSentAt: null,
+        });
+        return cleared ?? route;
+      }
+      return route;
+    }
+
+    const raw = readRawCoords(point);
     const anchorLat = route.driverDwellAnchorLat;
     const anchorLng = route.driverDwellAnchorLng;
 
     if (anchorLat != null && anchorLng != null) {
-      const movedMeters = haversineMeters(point.lat, point.lng, anchorLat, anchorLng);
+      const movedMeters = haversineMeters(raw.lat, raw.lng, anchorLat, anchorLng);
       if (movedMeters <= STATIONARY_RADIUS_M) {
         const startedAt = asLocationDate(route.driverDwellStartedAt);
         if (startedAt && !route.driverDwellAlertSentAt) {
           const dwellMs = point.recordedAt.getTime() - startedAt.getTime();
-          if (dwellMs >= STATIONARY_DWELL_MS) {
+          if (
+            dwellMs >= STATIONARY_DWELL_MS &&
+            isStationarySpeed(batchPointsForDwellWindow(batchPoints, startedAt, point.recordedAt))
+          ) {
             try {
-              await this.alertDriverStationary(route, point, dwellMs, ctx);
+              await this.alertDriverStationaryOutsideStop(route, point, dwellMs, ctx);
               const updated = await this.routeRepo.update(route.id, {
                 driverDwellAlertSentAt: point.recordedAt,
               });
@@ -239,33 +269,35 @@ export class DriverLocationMonitorService {
     }
 
     const updated = await this.routeRepo.update(route.id, {
-      driverDwellAnchorLat: point.lat,
-      driverDwellAnchorLng: point.lng,
+      driverDwellAnchorLat: raw.lat,
+      driverDwellAnchorLng: raw.lng,
       driverDwellStartedAt: point.recordedAt,
       driverDwellAlertSentAt: null,
     });
     return updated ?? route;
   }
 
-  private async alertDriverStationary(
+  private async alertDriverStationaryOutsideStop(
     route: Route,
     point: LocationPoint,
     dwellMs: number,
     ctx: MonitorContext
   ) {
     const dwellMinutes = Math.max(STATIONARY_DWELL_MINUTES, Math.floor(dwellMs / 60_000));
+    const raw = readRawCoords(point);
     const recipients = await resolveRouteOpsRecipientIds(
       this.userRepo,
       ctx.scheduleCity,
       [ctx.driverId]
     );
 
-    emitDriverStationary({
+    emitDispatchAlert({
+      kind: 'driver_stationary_outside_stop',
       routeId: ctx.routeId,
       scheduleId: ctx.scheduleId,
       driverId: ctx.driverId,
-      lat: point.lat,
-      lng: point.lng,
+      lat: raw.lat,
+      lng: raw.lng,
       dwellMinutes,
       driverName: ctx.driverName,
     });
@@ -279,13 +311,18 @@ export class DriverLocationMonitorService {
       driverId: ctx.driverId,
       driverName: ctx.driverName,
       dwellMinutes,
-      lat: point.lat,
-      lng: point.lng,
+      lat: raw.lat,
+      lng: raw.lng,
       city: ctx.scheduleCity,
     });
   }
 
-  private async trackStopProximity(route: Route, point: LocationPoint, ctx: MonitorContext) {
+  private async trackStopProximity(
+    route: Route,
+    point: LocationPoint,
+    batchPoints: LocationPoint[],
+    ctx: MonitorContext
+  ) {
     if (!route.id || route.status !== RouteStatus.IN_PROGRESS) return;
 
     const stops = await this.routeStopRepo.findByRouteId(route.id);
@@ -294,14 +331,15 @@ export class DriverLocationMonitorService {
     );
 
     const routeStartedAt = asLocationDate(route.startedAt);
+    const raw = readRawCoords(point);
 
     for (const stop of pendingDropoffs) {
       const dest = readStopDestinationCoords(stop);
       if (!dest) continue;
 
-      const distanceM = haversineMeters(point.lat, point.lng, dest.lat, dest.lng);
+      const distanceM = haversineMeters(raw.lat, raw.lng, dest.lat, dest.lng);
 
-      if (distanceM <= STOP_PROXIMITY_RADIUS_M) {
+      if (distanceM <= AUTO_COMPLETE_PROXIMITY_RADIUS_M) {
         let enteredAt = asLocationDate(stop.proximityEnteredAt);
 
         if (
@@ -315,14 +353,17 @@ export class DriverLocationMonitorService {
         if (!enteredAt) {
           await this.routeStopRepo.updateById(stop.id!, {
             proximityEnteredAt: point.recordedAt,
-            proximityAnchorLat: point.lat,
-            proximityAnchorLng: point.lng,
+            proximityAnchorLat: raw.lat,
+            proximityAnchorLng: raw.lng,
           });
           continue;
         }
 
         const dwellMs = point.recordedAt.getTime() - enteredAt.getTime();
-        if (dwellMs >= STOP_DWELL_MS && dwellMs <= 15 * 60_000) {
+        const dwellWindowPoints = batchPointsForDwellWindow(batchPoints, enteredAt, point.recordedAt);
+        const speedOk = isStationarySpeed(dwellWindowPoints, AUTO_COMPLETE_MAX_SPEED_MPS);
+
+        if (dwellMs >= STOP_DWELL_MS && dwellMs <= 15 * 60_000 && speedOk) {
           await this.autoCompleteStop(route, stop.id!, ctx);
           break;
         }
