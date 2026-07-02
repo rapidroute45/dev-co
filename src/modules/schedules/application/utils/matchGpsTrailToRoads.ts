@@ -212,6 +212,46 @@ function trimAnchorPrefix(matched: LatLng[], batchStart: LatLng): LatLng[] {
   return matched.slice(bestIndex);
 }
 
+async function matchSinglePoint(
+  valid: GpsTrailPoint[],
+  options: MatchGpsTrailOptions
+): Promise<RoadMatchResult> {
+  if (valid.length === 0) {
+    return { points: [], provider: 'raw', inputCount: 0, outputCount: 0 };
+  }
+
+  const point = valid[0]!;
+  const googleSnapped = await snapSinglePointToRoads(point);
+  if (googleSnapped.lat !== point.lat || googleSnapped.lng !== point.lng) {
+    return {
+      points: [{ lat: googleSnapped.lat, lng: googleSnapped.lng, recordedAt: point.recordedAt }],
+      provider: 'google',
+      inputCount: 1,
+      outputCount: 1,
+    };
+  }
+
+  const plannedPolyline = options.plannedPolyline ?? [];
+  if (plannedPolyline.length >= 2) {
+    const plannedSnapped = snapGpsTrailToPolyline(
+      [point],
+      plannedPolyline,
+      options.startProgressIndex ?? 0
+    );
+    const snapped = plannedSnapped[0]!;
+    if (snapped.lat !== point.lat || snapped.lng !== point.lng) {
+      return {
+        points: plannedSnapped,
+        provider: 'planned',
+        inputCount: 1,
+        outputCount: plannedSnapped.length,
+      };
+    }
+  }
+
+  return { points: [point], provider: 'raw', inputCount: 1, outputCount: 1 };
+}
+
 async function matchWithGoogle(coords: LatLng[]): Promise<{ points: LatLng[]; ok: boolean }> {
   const matched: LatLng[] = [];
   let allChunksSnapped = true;
@@ -338,12 +378,7 @@ export async function matchGpsTrailToRoads(
 ): Promise<RoadMatchResult> {
   const valid = points.filter((p) => isValidPoint(p) && !Number.isNaN(p.recordedAt.getTime()));
   if (valid.length < 2) {
-    return {
-      points: valid,
-      provider: 'raw',
-      inputCount: valid.length,
-      outputCount: valid.length,
-    };
+    return matchSinglePoint(valid, options);
   }
 
   const startAt = valid[0]!.recordedAt;
@@ -351,12 +386,7 @@ export async function matchGpsTrailToRoads(
   let coords = dedupeConsecutive(valid.map((p) => ({ lat: p.lat, lng: p.lng })));
 
   if (coords.length < 2) {
-    return {
-      points: valid,
-      provider: 'raw',
-      inputCount: valid.length,
-      outputCount: valid.length,
-    };
+    return matchSinglePoint(valid, options);
   }
 
   const batchStart = coords[0]!;

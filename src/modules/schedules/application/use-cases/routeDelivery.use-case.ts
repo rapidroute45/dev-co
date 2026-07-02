@@ -453,12 +453,18 @@ export class RouteDeliveryUseCase {
     }
 
     const recordedAt = new Date();
-    const startPoint = { lat, lng, recordedAt };
+    const rawStartPoint = { lat, lng, recordedAt };
+    const segmentPolyline = route.driverActiveSegmentPolyline ?? [];
+    const startMatch = await matchGpsTrailToRoads([rawStartPoint], {
+      plannedPolyline: segmentPolyline,
+      startProgressIndex: route.driverRouteProgressIndex ?? 0,
+    });
+    const startPoint = startMatch.points[0] ?? rawStartPoint;
     const driverRoutePath = mergeRoutePathPoints(route.driverRoutePath ?? [], [startPoint]);
 
     await this.routeRepo.update(routeId, {
-      driverLat: lat,
-      driverLng: lng,
+      driverLat: startPoint.lat,
+      driverLng: startPoint.lng,
       driverLocationAt: recordedAt,
       driverLocationIngestedAt: recordedAt,
       driverLocationBackgroundSharing: false,
@@ -469,21 +475,21 @@ export class RouteDeliveryUseCase {
       routeId,
       scheduleId: route.scheduleId,
       driverId,
-      lat,
-      lng,
+      lat: startPoint.lat,
+      lng: startPoint.lng,
       recordedAt: recordedAt.toISOString(),
       trailPoints: [
         {
-          lat,
-          lng,
+          lat: startPoint.lat,
+          lng: startPoint.lng,
           recordedAt: recordedAt.toISOString(),
         },
       ],
     });
 
     return {
-      lat,
-      lng,
+      lat: startPoint.lat,
+      lng: startPoint.lng,
       recordedAt: recordedAt.toISOString(),
     };
   }
@@ -593,6 +599,26 @@ export class RouteDeliveryUseCase {
         });
         incomingPath = roadMatch.points;
         roadMatchProvider = roadMatch.provider;
+
+        if (roadMatchProvider === 'raw') {
+          const mobileDisplayPath = plausible.map((point) => ({
+            lat: point.lat,
+            lng: point.lng,
+            recordedAt: point.recordedAt,
+          }));
+          const hasMobileSnap = plausible.some((point) => {
+            const displayDiffers = point.lat !== point.rawLat || point.lng !== point.rawLng;
+            if (!displayDiffers) return false;
+            if (segmentPolyline.length < 2) return true;
+            return (
+              distanceToPolylineM({ lat: point.lat, lng: point.lng }, segmentPolyline) <= 40
+            );
+          });
+          if (hasMobileSnap) {
+            incomingPath = mobileDisplayPath;
+            roadMatchProvider = 'planned';
+          }
+        }
       } catch (error) {
         console.warn('[location-batch] road match failed — using raw GPS', { routeId, error });
         incomingPath = rawPathPoints;
